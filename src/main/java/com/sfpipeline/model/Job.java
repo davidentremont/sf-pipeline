@@ -15,6 +15,7 @@ public class Job {
     private int defaultBatchSize = 1000;
     private int defaultThreads = 5;
     private Map<String, Map<String, Object>> pluginConfig;
+    private List<RuntimeParam> runtimeParams;
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -42,4 +43,7 @@ public class Job {
 
     public Map<String, Map<String, Object>> getPluginConfig() { return pluginConfig; }
     public void setPluginConfig(Map<String, Map<String, Object>> pluginConfig) { this.pluginConfig = pluginConfig; }
+
+    public List<RuntimeParam> getRuntimeParams() { return runtimeParams; }
+    public void setRuntimeParams(List<RuntimeParam> runtimeParams) { this.runtimeParams = runtimeParams; }
 }

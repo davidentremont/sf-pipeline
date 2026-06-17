@@ -5,11 +5,13 @@
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/model/Job.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/model/PipelineConfig.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/model/PipelineEvent.java
+/Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/model/RuntimeParam.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/pipeline/PipelineEngine.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/pipeline/QueryEngine.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/plugin/Plugin.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/plugin/PluginContext.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/plugin/PluginRegistry.java
+/Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/plugin/impl/CompositeDeletePlugin.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/plugin/impl/LogPlugin.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/plugin/impl/SfdxApexPlugin.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/plugin/impl/ShareCalculatorPlugin.java

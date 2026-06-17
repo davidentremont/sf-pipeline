@@ -14,6 +14,9 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 
@@ -72,6 +75,32 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
         } catch (Exception e) {
             send(session, new PipelineEvent("ERROR").with("message", "Job not found: " + jobId));
             return;
+        }
+
+        // Merge runtime params into pluginConfig; also collect flat map for query substitution
+        Map<String, String> queryTokens = new HashMap<>();
+        JsonNode params = msg.path("params");
+        if (params.isObject()) {
+            Map<String, Map<String, Object>> pluginConfig = job.getPluginConfig();
+            if (pluginConfig == null) pluginConfig = new HashMap<>();
+            Iterator<Map.Entry<String, JsonNode>> plugins = params.fields();
+            while (plugins.hasNext()) {
+                Map.Entry<String, JsonNode> entry = plugins.next();
+                Map<String, Object> cfg = pluginConfig.computeIfAbsent(entry.getKey(), k -> new HashMap<>());
+                entry.getValue().fields().forEachRemaining(f -> {
+                    cfg.put(f.getKey(), f.getValue().asText());
+                    queryTokens.put(f.getKey(), f.getValue().asText());
+                });
+            }
+            job.setPluginConfig(pluginConfig);
+        }
+        // Substitute {key} tokens in the query with runtime param values
+        if (!queryTokens.isEmpty() && job.getQuery() != null) {
+            String query = job.getQuery();
+            for (Map.Entry<String, String> token : queryTokens.entrySet()) {
+                query = query.replace("{" + token.getKey() + "}", token.getValue());
+            }
+            job.setQuery(query);
         }
 
         PipelineConfig config = new PipelineConfig();

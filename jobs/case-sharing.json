@@ -1,16 +1,25 @@
 {
-  "id": "case-sharing",
-  "name": "Case Sharing Recalculation",
+  "id": "share-recalculation",
+  "name": "Share Recalculation",
   "version": "1.0",
-  "description": "Recalculates sharing for Case records using the sobjectshares Apex REST endpoint",
-  "query": "SELECT Id FROM Case ORDER BY Id ASC",
+  "description": "Recalculates sharing for any object using the sobjectshares Apex REST endpoint",
+  "query": "SELECT Id FROM {objectType} ORDER BY Id ASC",
   "plugins": ["ShareCalculatorPlugin"],
   "defaultBatchSize": 10000,
   "defaultThreads": 10,
   "pluginConfig": {
     "ShareCalculatorPlugin": {
-      "objectType": "Case",
       "batchSize": 50
     }
-  }
+  },
+  "runtimeParams": [
+    {
+      "plugin": "ShareCalculatorPlugin",
+      "key": "objectType",
+      "label": "Object Type",
+      "type": "text",
+      "placeholder": "Case",
+      "required": true
+    }
+  ]
 }

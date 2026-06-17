@@ -22,20 +22,30 @@ export default function App() {
   const [showToken, setShowToken]       = useState(false)
   const [batchSize, setBatchSize]       = useState(1000)
   const [threads, setThreads]           = useState(5)
+  const [params, setParams]             = useState({})
 
   useEffect(() => {
     if (selectedJob) {
       setBatchSize(selectedJob.defaultBatchSize || 1000)
       setThreads(selectedJob.defaultThreads || 5)
+      const initial = {}
+      for (const rp of (selectedJob.runtimeParams || [])) {
+        if (!initial[rp.plugin]) initial[rp.plugin] = {}
+        initial[rp.plugin][rp.key] = rp.defaultValue || ''
+      }
+      setParams(initial)
     }
   }, [selectedJob?.id])
 
   const isRunning = state.status === 'running' || state.status === 'stopping'
-  const canStart  = state.connected && selectedJob && instanceUrl.trim() && accessToken.trim() && !isRunning
+  const runtimeParamsFilled = (selectedJob?.runtimeParams || [])
+    .filter(rp => rp.required)
+    .every(rp => params[rp.plugin]?.[rp.key]?.trim())
+  const canStart  = state.connected && selectedJob && instanceUrl.trim() && accessToken.trim() && runtimeParamsFilled && !isRunning
   const canStop   = state.status === 'running'
 
   function handleStart() {
-    if (canStart) startPipeline(selectedJob.id, instanceUrl.trim(), accessToken.trim(), batchSize, threads)
+    if (canStart) startPipeline(selectedJob.id, instanceUrl.trim(), accessToken.trim(), batchSize, threads, params)
   }
 
   const statusColor = {
@@ -164,6 +174,31 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            {/* Runtime params (job-defined, dynamic) */}
+            {(selectedJob?.runtimeParams || []).length > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {(selectedJob.runtimeParams || []).map(rp => (
+                  <div key={`${rp.plugin}.${rp.key}`}>
+                    <label className="label">
+                      {rp.label}
+                      {rp.required && <span className="text-red-400 ml-0.5">*</span>}
+                    </label>
+                    <input
+                      className="input"
+                      type={rp.type || 'text'}
+                      value={params[rp.plugin]?.[rp.key] || ''}
+                      onChange={e => setParams(prev => ({
+                        ...prev,
+                        [rp.plugin]: { ...prev[rp.plugin], [rp.key]: e.target.value }
+                      }))}
+                      placeholder={rp.placeholder || ''}
+                      disabled={isRunning}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Row 2: pipeline params + controls */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">

@@ -11,9 +11,11 @@ com/sfpipeline/plugin/impl/LogPlugin.class
 com/sfpipeline/plugin/impl/ShareCalculatorPlugin.class
 com/sfpipeline/config/WebSocketConfig.class
 com/sfpipeline/plugin/impl/SfdxApexPlugin.class
+com/sfpipeline/model/RuntimeParam.class
 com/sfpipeline/pipeline/QueryEngine.class
 com/sfpipeline/ws/PipelineWebSocketHandler.class
 com/sfpipeline/config/WebConfig.class
+com/sfpipeline/plugin/impl/CompositeDeletePlugin.class
 com/sfpipeline/service/JobService.class
 com/sfpipeline/SfPipelineApplication.class
 com/sfpipeline/pipeline/PipelineEngine.class
