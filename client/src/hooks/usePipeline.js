@@ -67,14 +67,12 @@ function reducer(state, action) {
     case 'WORKER_DONE':
       return {
         ...state,
-        workers: state.workers.map(w =>
-          w.id === action.workerId ? { ...w, status: 'done', currentPlugin: null } : w)
+        workers: state.workers.filter(w => w.id !== action.workerId)
       }
     case 'WORKER_ERROR':
       return {
         ...addEvent(`Worker ${action.workerId} error in ${action.plugin}: ${action.error}`, 'error'),
-        workers: state.workers.map(w =>
-          w.id === action.workerId ? { ...w, status: 'error', currentPlugin: action.plugin } : w)
+        workers: state.workers.filter(w => w.id !== action.workerId)
       }
 
     case 'BATCH_COMPLETE':

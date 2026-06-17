@@ -132,6 +132,9 @@ public class PipelineEngine {
                     }, workerPool));
                 }
 
+                // Remove completed futures so their captured record data can be GC'd.
+                allFutures.removeIf(CompletableFuture::isDone);
+
                 emit(new PipelineEvent("BATCH_COMPLETE")
                         .with("batch", batchNum)
                         .with("totalProcessed", totalProcessed.get()));

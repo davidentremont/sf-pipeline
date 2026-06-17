@@ -3,43 +3,28 @@ import React from 'react'
 const STATUS_RING = {
   waiting: 'bg-gray-200 border-gray-300',
   running: 'bg-green-100 border-green-400',
-  done:    'bg-green-50 border-green-400',
-  error:   'bg-red-50 border-red-400',
-  stopped: 'bg-yellow-50 border-yellow-400',
 }
 
 const STATUS_DOT = {
   waiting: 'bg-gray-300',
   running: 'bg-green-500 animate-ping',
-  done:    'bg-green-500',
-  error:   'bg-red-500',
-  stopped: 'bg-yellow-500',
 }
 
 const STATUS_TEXT = {
   waiting: 'text-gray-400',
   running: 'text-green-800',
-  done:    'text-green-700',
-  error:   'text-red-700',
-  stopped: 'text-yellow-700',
 }
 
 export default function WorkerMonitor({ workers, progress }) {
-  const runningCount = workers.filter(w => w.status === 'running').length
-  const doneCount    = workers.filter(w => w.status === 'done').length
-  const errorCount   = workers.filter(w => w.status === 'error').length
+  const runningCount = workers.length
 
   return (
     <div className="card">
       <div className="card-header flex items-center justify-between">
         <span>Live Thread Monitoring</span>
         <div className="flex items-center gap-3 font-normal normal-case tracking-normal text-xs text-gray-500">
-          {workers.length > 0 && (
-            <>
-              <span className="text-green-600">{runningCount} running</span>
-              <span>{doneCount} done</span>
-              {errorCount > 0 && <span className="text-red-600">{errorCount} errors</span>}
-            </>
+          {runningCount > 0 && (
+            <span className="text-green-600">{runningCount} running</span>
           )}
           {progress.batch > 0 && (
             <span>Batch {progress.batch} · {progress.processed.toLocaleString()} records</span>
