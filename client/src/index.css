@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-sf-gray text-gray-800 font-sans;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-lg border border-sf-border shadow-sm;
+  }
+  .card-header {
+    @apply px-4 py-3 border-b border-sf-border font-semibold text-sf-dark text-sm uppercase tracking-wide;
+  }
+  .btn {
+    @apply px-4 py-2 rounded font-medium text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-sf-blue text-white hover:bg-blue-700;
+  }
+  .btn-danger {
+    @apply btn bg-sf-red text-white hover:bg-red-800;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-sf-dark border border-sf-border hover:bg-gray-50;
+  }
+  .input {
+    @apply w-full px-3 py-2 border border-sf-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-sf-blue focus:border-transparent;
+  }
+  .label {
+    @apply block text-xs font-medium text-gray-600 mb-1;
+  }
+}
+
+/* Worker status pulse animation */
+@keyframes pulse-green {
+  0%, 100% { background-color: #d1fae5; }
+  50% { background-color: #6ee7b7; }
+}
+.worker-running { animation: pulse-green 1.5s ease-in-out infinite; }

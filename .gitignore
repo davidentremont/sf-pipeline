@@ -1,0 +1,9 @@
+target/
+*.class
+*.jar
+*.war
+node_modules/
+client/dist/
+src/main/resources/static/
+.DS_Store
+*.log
