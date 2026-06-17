@@ -17,8 +17,8 @@ export default function App() {
   const { state, startPipeline, stopPipeline } = usePipeline()
   const { jobs, selectedJob, selectJob, loading: jobsLoading, reload: reloadJobs } = useJobs()
 
-  const [instanceUrl, setInstanceUrl]   = useState('')
-  const [accessToken, setAccessToken]   = useState('')
+  const [instanceUrl, setInstanceUrl]   = useState(() => localStorage.getItem('sf_instanceUrl') || '')
+  const [accessToken, setAccessToken]   = useState(() => localStorage.getItem('sf_accessToken') || '')
   const [showToken, setShowToken]       = useState(false)
   const [batchSize, setBatchSize]       = useState(1000)
   const [threads, setThreads]           = useState(5)
@@ -146,7 +146,7 @@ export default function App() {
                   className="input"
                   type="text"
                   value={instanceUrl}
-                  onChange={e => setInstanceUrl(e.target.value)}
+                  onChange={e => { setInstanceUrl(e.target.value); localStorage.setItem('sf_instanceUrl', e.target.value) }}
                   placeholder="https://myorg.my.salesforce.com"
                   disabled={isRunning}
                   autoComplete="off"
@@ -159,7 +159,7 @@ export default function App() {
                     className="input pr-16"
                     type={showToken ? 'text' : 'password'}
                     value={accessToken}
-                    onChange={e => setAccessToken(e.target.value)}
+                    onChange={e => { setAccessToken(e.target.value); localStorage.setItem('sf_accessToken', e.target.value) }}
                     placeholder="00D…"
                     disabled={isRunning}
                     autoComplete="off"
@@ -203,7 +203,7 @@ export default function App() {
             {/* Row 2: pipeline params + controls */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
               <div>
-                <label className="label">Batch Size (SOQL LIMIT)</label>
+                <label className="label">Chunk Size (per worker)</label>
                 <input
                   className="input"
                   type="number"

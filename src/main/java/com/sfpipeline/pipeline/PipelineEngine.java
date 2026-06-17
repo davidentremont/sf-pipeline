@@ -71,6 +71,10 @@ public class PipelineEngine {
                 .with("threads", threads)
                 .with("plugins", job.getPlugins()));
 
+        // soqlPageSize is the SOQL LIMIT per query; batchSize is the per-worker chunk size.
+        // Cap at 50,000 which is the Salesforce REST API maximum.
+        int soqlPageSize = Math.min(batchSize * threads, 50000);
+
         workerPool = Executors.newFixedThreadPool(threads);
         String lastId = null;
         int batchNum = 0;
@@ -78,7 +82,7 @@ public class PipelineEngine {
         try {
             while (running.get()) {
                 batchNum++;
-                String query = queryEngine.buildQuery(job.getQuery(), lastId, batchSize);
+                String query = queryEngine.buildQuery(job.getQuery(), lastId, soqlPageSize);
 
                 emit(new PipelineEvent("QUERYING")
                         .with("batch", batchNum)
@@ -86,7 +90,7 @@ public class PipelineEngine {
 
                 List<Map<String, Object>> records;
                 try {
-                    records = queryEngine.query(job.getQuery(), lastId, batchSize, instanceUrl, accessToken);
+                    records = salesforceService.runQuery(query, instanceUrl, accessToken);
                 } catch (Exception e) {
                     emit(new PipelineEvent("ERROR").with("message", "Query failed: " + e.getMessage()));
                     break;
@@ -135,7 +139,7 @@ public class PipelineEngine {
                         .with("batch", batchNum)
                         .with("totalProcessed", totalProcessed.get()));
 
-                if (records.size() < batchSize) {
+                if (records.size() < soqlPageSize) {
                     emit(new PipelineEvent("COMPLETE")
                             .with("totalProcessed", totalProcessed.get())
                             .with("message", "All records processed"));

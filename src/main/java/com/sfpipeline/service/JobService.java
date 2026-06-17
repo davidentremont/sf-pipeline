@@ -30,10 +30,15 @@ public class JobService {
     }
 
     public Job getJobById(String id) {
-        return cachedJobs.stream()
+        Job template = cachedJobs.stream()
                 .filter(j -> id.equals(j.getId()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Job not found: " + id));
+        try {
+            return objectMapper.readValue(objectMapper.writeValueAsBytes(template), Job.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to copy job: " + id, e);
+        }
     }
 
     public void reload() {
