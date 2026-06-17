@@ -1,4 +1,5 @@
 com/sfpipeline/model/Job.class
+com/sfpipeline/model/PipelineProgress.class
 com/sfpipeline/model/PipelineEvent.class
 com/sfpipeline/model/PipelineConfig.class
 com/sfpipeline/plugin/PluginRegistry.class
@@ -10,6 +11,7 @@ com/sfpipeline/plugin/PluginContext.class
 com/sfpipeline/plugin/impl/LogPlugin.class
 com/sfpipeline/plugin/impl/ShareCalculatorPlugin.class
 com/sfpipeline/config/WebSocketConfig.class
+com/sfpipeline/service/ProgressService.class
 com/sfpipeline/plugin/impl/SfdxApexPlugin.class
 com/sfpipeline/model/RuntimeParam.class
 com/sfpipeline/pipeline/QueryEngine.class

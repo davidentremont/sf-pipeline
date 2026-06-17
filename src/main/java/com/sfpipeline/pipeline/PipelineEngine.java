@@ -6,6 +6,7 @@ import com.sfpipeline.model.PipelineEvent;
 import com.sfpipeline.plugin.Plugin;
 import com.sfpipeline.plugin.PluginContext;
 import com.sfpipeline.plugin.PluginRegistry;
+import com.sfpipeline.service.ProgressService;
 import com.sfpipeline.service.SalesforceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,9 @@ public class PipelineEngine {
     @Autowired
     private SalesforceService salesforceService;
 
+    @Autowired
+    private ProgressService progressService;
+
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicLong totalProcessed = new AtomicLong(0);
     private volatile Consumer<PipelineEvent> eventEmitter;
@@ -44,7 +48,7 @@ public class PipelineEngine {
             return;
         }
         this.eventEmitter = emitter;
-        this.totalProcessed.set(0);
+        this.totalProcessed.set(config.getInitialProcessed());
         Thread t = new Thread(() -> runPipeline(config), "pipeline-main");
         t.setDaemon(true);
         t.start();
@@ -62,6 +66,7 @@ public class PipelineEngine {
         String accessToken = config.getAccessToken();
         int batchSize = config.getBatchSize();
         int threads = config.getThreads();
+        String jobId = job.getId();
 
         List<Plugin> plugins = pluginRegistry.getPlugins(job.getPlugins());
 
@@ -70,15 +75,17 @@ public class PipelineEngine {
                 .with("instanceUrl", instanceUrl)
                 .with("batchSize", batchSize)
                 .with("threads", threads)
-                .with("plugins", job.getPlugins()));
+                .with("plugins", job.getPlugins())
+                .with("resumeFromId", config.getResumeFromId())
+                .with("initialProcessed", config.getInitialProcessed()));
 
-        // CachedThreadPool grows as needed — workers from multiple batches run concurrently.
         workerPool = Executors.newCachedThreadPool();
         AtomicInteger workerIdSeq = new AtomicInteger(0);
         List<CompletableFuture<Void>> allFutures = new ArrayList<>();
-        String lastId = null;
+        String lastId = config.getResumeFromId();
         int batchNum = 0;
         boolean completedNormally = false;
+        boolean errorOccurred = false;
 
         try {
             while (running.get()) {
@@ -94,6 +101,7 @@ public class PipelineEngine {
                     records = salesforceService.runQuery(query, instanceUrl, accessToken);
                 } catch (Exception e) {
                     emit(new PipelineEvent("ERROR").with("message", "Query failed: " + e.getMessage()));
+                    errorOccurred = true;
                     break;
                 }
 
@@ -122,7 +130,7 @@ public class PipelineEngine {
                 }
                 emit(new PipelineEvent("WORKERS_INIT").with("workers", workerInit));
 
-                // Dispatch workers and immediately continue to the next batch query.
+                // Dispatch workers fire-and-forget; continue to next batch query immediately.
                 for (int i = 0; i < actualWorkers; i++) {
                     final int workerId = workerIds.get(i);
                     final List<Map<String, Object>> chunk = chunks.get(i);
@@ -132,15 +140,17 @@ public class PipelineEngine {
                     }, workerPool));
                 }
 
-                // Remove completed futures so their captured record data can be GC'd.
+                // Prune completed futures so captured record data can be GC'd.
                 allFutures.removeIf(CompletableFuture::isDone);
 
                 emit(new PipelineEvent("BATCH_COMPLETE")
                         .with("batch", batchNum)
                         .with("totalProcessed", totalProcessed.get()));
+
+                progressService.updateBatch(jobId, instanceUrl, lastId, totalProcessed.get(), batchNum);
             }
 
-            // Query loop exhausted — wait for all in-flight workers across all batches.
+            // Wait for all in-flight workers across all batches before finishing.
             if (!allFutures.isEmpty()) {
                 try {
                     CompletableFuture.allOf(allFutures.toArray(new CompletableFuture[0])).join();
@@ -154,6 +164,9 @@ public class PipelineEngine {
             }
 
         } finally {
+            String finalStatus = completedNormally ? "completed" : (errorOccurred ? "error" : "stopped");
+            progressService.setStatus(jobId, instanceUrl, finalStatus, totalProcessed.get());
+
             running.set(false);
             workerPool.shutdown();
             emit(new PipelineEvent("STOPPED").with("totalProcessed", totalProcessed.get()));

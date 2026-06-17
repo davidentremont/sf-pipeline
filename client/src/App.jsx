@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { usePipeline } from './hooks/usePipeline.js'
 import { useJobs } from './hooks/useJobs.js'
+import { useProgress } from './hooks/useProgress.js'
 import WorkerMonitor from './components/WorkerMonitor.jsx'
 import EventLog from './components/EventLog.jsx'
 
@@ -13,9 +14,68 @@ function StatusDot({ connected }) {
   )
 }
 
+const STATUS_BADGE = {
+  running:   'bg-yellow-100 text-yellow-800 border-yellow-300',
+  stopped:   'bg-orange-100 text-orange-800 border-orange-300',
+  error:     'bg-red-100 text-red-800 border-red-300',
+  completed: 'bg-green-100 text-green-800 border-green-300',
+}
+
+function ResumeBar({ prog, onResume, onFresh, disabled }) {
+  if (!prog) return null
+
+  const canResume = prog.lastId && prog.status !== 'completed'
+  const badgeCls  = STATUS_BADGE[prog.status] || STATUS_BADGE.stopped
+
+  return (
+    <div className="rounded border border-sf-border bg-gray-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`text-xs font-medium px-2 py-0.5 rounded border ${badgeCls}`}>
+            {prog.status}
+          </span>
+          <span className="text-sm font-medium text-gray-700">Previous run</span>
+          <span className="text-xs text-gray-500">
+            {prog.totalProcessed.toLocaleString()} records · Batch {prog.batchNum}
+          </span>
+          {prog.updatedAt && (
+            <span className="text-xs text-gray-400">
+              {new Date(prog.updatedAt).toLocaleString()}
+            </span>
+          )}
+        </div>
+        {prog.lastId && (
+          <div className="mt-1 text-xs text-gray-500 font-mono truncate">
+            Last ID: {prog.lastId}
+          </div>
+        )}
+      </div>
+      <div className="flex gap-2 shrink-0">
+        {canResume && (
+          <button
+            className="btn-primary text-xs px-3 py-1"
+            onClick={onResume}
+            disabled={disabled}
+          >
+            ↩ Resume
+          </button>
+        )}
+        <button
+          className="btn-secondary text-xs px-3 py-1"
+          onClick={onFresh}
+          disabled={disabled}
+        >
+          ↺ Start Fresh
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const { state, startPipeline, stopPipeline } = usePipeline()
   const { jobs, selectedJob, selectJob, loading: jobsLoading, reload: reloadJobs } = useJobs()
+  const { progress: allProgress, refresh: refreshProgress } = useProgress()
 
   const [instanceUrl, setInstanceUrl]   = useState(() => localStorage.getItem('sf_instanceUrl') || '')
   const [accessToken, setAccessToken]   = useState(() => localStorage.getItem('sf_accessToken') || '')
@@ -37,16 +97,29 @@ export default function App() {
     }
   }, [selectedJob?.id])
 
+  // Refresh progress from DB after each run finishes
+  useEffect(() => {
+    if (state.status === 'idle' || state.status === 'completed') {
+      refreshProgress()
+    }
+  }, [state.status])
+
+  const savedProgress = selectedJob && instanceUrl.trim()
+    ? allProgress.find(p => p.jobId === selectedJob.id && p.instanceUrl === instanceUrl.trim())
+    : null
+
   const isRunning = state.status === 'running' || state.status === 'stopping'
   const runtimeParamsFilled = (selectedJob?.runtimeParams || [])
     .filter(rp => rp.required)
     .every(rp => params[rp.plugin]?.[rp.key]?.trim())
-  const canStart  = state.connected && selectedJob && instanceUrl.trim() && accessToken.trim() && runtimeParamsFilled && !isRunning
-  const canStop   = state.status === 'running'
+  const canStart = state.connected && selectedJob && instanceUrl.trim() && accessToken.trim() && runtimeParamsFilled && !isRunning
+  const canStop  = state.status === 'running'
 
-  function handleStart() {
-    if (canStart) startPipeline(selectedJob.id, instanceUrl.trim(), accessToken.trim(), batchSize, threads, params)
+  function handleStart(fresh = false) {
+    if (canStart) startPipeline(selectedJob.id, instanceUrl.trim(), accessToken.trim(), batchSize, threads, params, fresh)
   }
+
+  const hasResumable = savedProgress?.lastId && savedProgress?.status !== 'completed'
 
   const statusColor = {
     idle:      'text-gray-500',
@@ -81,20 +154,30 @@ export default function App() {
               {!jobsLoading && jobs.length === 0 && (
                 <div className="text-sm text-gray-400 italic">No jobs found in <code>jobs/</code></div>
               )}
-              {jobs.map(job => (
-                <button
-                  key={job.id}
-                  onClick={() => selectJob(job.id)}
-                  className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-                    selectedJob?.id === job.id
-                      ? 'bg-sf-light text-sf-dark font-medium border-l-4 border-sf-blue'
-                      : 'hover:bg-gray-50 text-gray-700'
-                  }`}
-                >
-                  <div className="font-medium">{job.name}</div>
-                  <div className="text-xs text-gray-500">v{job.version} · {(job.plugins || []).length} plugin(s)</div>
-                </button>
-              ))}
+              {jobs.map(job => {
+                const jobProg = allProgress.find(p => p.jobId === job.id)
+                return (
+                  <button
+                    key={job.id}
+                    onClick={() => selectJob(job.id)}
+                    className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                      selectedJob?.id === job.id
+                        ? 'bg-sf-light text-sf-dark font-medium border-l-4 border-sf-blue'
+                        : 'hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <div className="font-medium">{job.name}</div>
+                    <div className="text-xs text-gray-500 flex items-center gap-1.5">
+                      <span>v{job.version} · {(job.plugins || []).length} plugin(s)</span>
+                      {jobProg && (
+                        <span className={`px-1.5 py-0.5 rounded border text-xs ${STATUS_BADGE[jobProg.status] || STATUS_BADGE.stopped}`}>
+                          {jobProg.totalProcessed.toLocaleString()} rec
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           </div>
 
@@ -200,6 +283,16 @@ export default function App() {
               </div>
             )}
 
+            {/* Previous run / resume banner */}
+            {savedProgress && (
+              <ResumeBar
+                prog={savedProgress}
+                onResume={() => handleStart(false)}
+                onFresh={() => handleStart(true)}
+                disabled={!canStart}
+              />
+            )}
+
             {/* Row 2: pipeline params + controls */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
               <div>
@@ -227,8 +320,12 @@ export default function App() {
                 />
               </div>
               <div className="flex gap-2">
-                <button className="btn-primary flex-1" onClick={handleStart} disabled={!canStart}>
-                  ▶ Start
+                <button
+                  className="btn-primary flex-1"
+                  onClick={() => handleStart(false)}
+                  disabled={!canStart}
+                >
+                  {hasResumable ? '↩ Resume' : '▶ Start'}
                 </button>
                 <button className="btn-danger flex-1" onClick={stopPipeline} disabled={!canStop}>
                   ■ Stop

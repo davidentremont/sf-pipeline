@@ -6,6 +6,8 @@ public class PipelineConfig {
     private String accessToken;
     private int batchSize;
     private int threads;
+    private String resumeFromId;
+    private long initialProcessed;
 
     public Job getJob() { return job; }
     public void setJob(Job job) { this.job = job; }
@@ -21,4 +23,10 @@ public class PipelineConfig {
 
     public int getThreads() { return threads; }
     public void setThreads(int threads) { this.threads = threads; }
+
+    public String getResumeFromId() { return resumeFromId; }
+    public void setResumeFromId(String resumeFromId) { this.resumeFromId = resumeFromId; }
+
+    public long getInitialProcessed() { return initialProcessed; }
+    public void setInitialProcessed(long initialProcessed) { this.initialProcessed = initialProcessed; }
 }

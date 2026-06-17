@@ -5,8 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sfpipeline.model.Job;
 import com.sfpipeline.model.PipelineConfig;
 import com.sfpipeline.model.PipelineEvent;
+import com.sfpipeline.model.PipelineProgress;
 import com.sfpipeline.pipeline.PipelineEngine;
 import com.sfpipeline.service.JobService;
+import com.sfpipeline.service.ProgressService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
@@ -14,9 +16,11 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 
@@ -25,6 +29,7 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
 
     @Autowired private PipelineEngine pipelineEngine;
     @Autowired private JobService jobService;
+    @Autowired private ProgressService progressService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Set<WebSocketSession> sessions = new CopyOnWriteArraySet<>();
@@ -59,6 +64,7 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
         String accessToken = msg.path("accessToken").asText();
         int batchSize      = msg.path("batchSize").asInt(1000);
         int threads        = msg.path("threads").asInt(5);
+        boolean fresh      = msg.path("fresh").asBoolean(false);
 
         if (instanceUrl.isBlank()) {
             send(session, new PipelineEvent("ERROR").with("message", "Instance URL is required"));
@@ -77,7 +83,7 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // Merge runtime params into pluginConfig; also collect flat map for query substitution
+        // Merge runtime params into pluginConfig; collect flat map for query substitution
         Map<String, String> queryTokens = new HashMap<>();
         JsonNode params = msg.path("params");
         if (params.isObject()) {
@@ -94,7 +100,6 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
             }
             job.setPluginConfig(pluginConfig);
         }
-        // Substitute {key} tokens in the query with runtime param values
         if (!queryTokens.isEmpty() && job.getQuery() != null) {
             String query = job.getQuery();
             for (Map.Entry<String, String> token : queryTokens.entrySet()) {
@@ -103,12 +108,48 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
             job.setQuery(query);
         }
 
+        String resolvedQuery = job.getQuery();
+
+        // Determine resume state
+        String resumeFromId = null;
+        long initialProcessed = 0;
+        Optional<PipelineProgress> existing = progressService.get(jobId, instanceUrl);
+
+        if (!fresh && existing.isPresent()) {
+            PipelineProgress prev = existing.get();
+            if (resolvedQuery != null && resolvedQuery.equals(prev.getQuery())
+                    && prev.getLastId() != null
+                    && !"completed".equals(prev.getStatus())) {
+                resumeFromId = prev.getLastId();
+                initialProcessed = prev.getTotalProcessed();
+            }
+        }
+
+        // Upsert progress record for this run
+        PipelineProgress progress = new PipelineProgress();
+        progress.setJobId(jobId);
+        progress.setInstanceUrl(instanceUrl);
+        progress.setQuery(resolvedQuery);
+        progress.setLastId(resumeFromId);
+        progress.setTotalProcessed(initialProcessed);
+        progress.setBatchNum(existing.isPresent() && resumeFromId != null ? existing.get().getBatchNum() : 0);
+        progress.setStatus("running");
+        progress.setStartedAt(
+            existing.isPresent() && resumeFromId != null
+                ? existing.get().getStartedAt()
+                : Instant.now().toString()
+        );
+        progress.setUpdatedAt(Instant.now().toString());
+        progressService.upsert(progress);
+
         PipelineConfig config = new PipelineConfig();
         config.setJob(job);
         config.setInstanceUrl(instanceUrl);
         config.setAccessToken(accessToken);
         config.setBatchSize(batchSize);
         config.setThreads(threads);
+        config.setResumeFromId(resumeFromId);
+        config.setInitialProcessed(initialProcessed);
 
         pipelineEngine.start(config, this::broadcast);
     }

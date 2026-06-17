@@ -1,9 +1,11 @@
 package com.sfpipeline.controller;
 
 import com.sfpipeline.model.Job;
+import com.sfpipeline.model.PipelineProgress;
 import com.sfpipeline.pipeline.PipelineEngine;
 import com.sfpipeline.plugin.PluginRegistry;
 import com.sfpipeline.service.JobService;
+import com.sfpipeline.service.ProgressService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +25,9 @@ public class ApiController {
 
     @Autowired
     private PipelineEngine pipelineEngine;
+
+    @Autowired
+    private ProgressService progressService;
 
     @GetMapping("/jobs")
     public List<Job> getJobs() {
@@ -50,5 +55,10 @@ public class ApiController {
     @GetMapping("/status")
     public Map<String, Object> getStatus() {
         return Map.of("running", pipelineEngine.isRunning());
+    }
+
+    @GetMapping("/progress")
+    public List<PipelineProgress> getProgress() {
+        return progressService.getAll();
     }
 }
