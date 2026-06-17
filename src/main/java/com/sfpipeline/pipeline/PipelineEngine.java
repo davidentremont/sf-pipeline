@@ -134,13 +134,6 @@ public class PipelineEngine {
                 emit(new PipelineEvent("BATCH_COMPLETE")
                         .with("batch", batchNum)
                         .with("totalProcessed", totalProcessed.get()));
-
-                if (records.size() < batchSize) {
-                    emit(new PipelineEvent("COMPLETE")
-                            .with("totalProcessed", totalProcessed.get())
-                            .with("message", "All records processed"));
-                    break;
-                }
             }
         } finally {
             running.set(false);

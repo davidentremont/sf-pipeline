@@ -7,11 +7,6 @@
   "plugins": ["ShareCalculatorPlugin"],
   "defaultBatchSize": 10000,
   "defaultThreads": 10,
-  "pluginConfig": {
-    "ShareCalculatorPlugin": {
-      "batchSize": 50
-    }
-  },
   "runtimeParams": [
     {
       "plugin": "ShareCalculatorPlugin",

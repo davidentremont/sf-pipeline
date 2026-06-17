@@ -27,30 +27,38 @@ public class SalesforceService {
         String urlStr = instanceUrl + "/services/data/" + API_VERSION + "/query?q="
                 + URLEncoder.encode(soql, StandardCharsets.UTF_8);
 
-        HttpURLConnection conn = openConnection(urlStr, "GET", accessToken);
-        conn.setConnectTimeout(30000);
-        conn.setReadTimeout(60000);
-
-        int code = conn.getResponseCode();
-        String body = readAll(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
-        conn.disconnect();
-
-        if (code < 200 || code >= 300) {
-            throw new RuntimeException("Salesforce query failed (HTTP " + code + "): " + body);
-        }
-
-        JsonNode records = objectMapper.readTree(body).path("records");
-        if (!records.isArray()) return new ArrayList<>();
-
         List<Map<String, Object>> result = new ArrayList<>();
-        for (JsonNode record : records) {
-            Map<String, Object> row = new HashMap<>();
-            record.fields().forEachRemaining(e -> {
-                if (!e.getKey().equals("attributes")) {
-                    row.put(e.getKey(), e.getValue().isNull() ? null : e.getValue().asText());
+        while (urlStr != null) {
+            HttpURLConnection conn = openConnection(urlStr, "GET", accessToken);
+            conn.setConnectTimeout(30000);
+            conn.setReadTimeout(60000);
+
+            int code = conn.getResponseCode();
+            String body = readAll(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
+            conn.disconnect();
+
+            if (code < 200 || code >= 300) {
+                throw new RuntimeException("Salesforce query failed (HTTP " + code + "): " + body);
+            }
+
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode records = root.path("records");
+            if (records.isArray()) {
+                for (JsonNode record : records) {
+                    Map<String, Object> row = new HashMap<>();
+                    record.fields().forEachRemaining(e -> {
+                        if (!e.getKey().equals("attributes")) {
+                            row.put(e.getKey(), e.getValue().isNull() ? null : e.getValue().asText());
+                        }
+                    });
+                    result.add(row);
                 }
-            });
-            result.add(row);
+            }
+
+            JsonNode nextUrl = root.path("nextRecordsUrl");
+            urlStr = (!root.path("done").asBoolean(true) && !nextUrl.isMissingNode())
+                    ? instanceUrl + nextUrl.asText()
+                    : null;
         }
         return result;
     }
