@@ -203,7 +203,7 @@ export default function App() {
             {/* Row 2: pipeline params + controls */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
               <div>
-                <label className="label">Chunk Size (per worker)</label>
+                <label className="label">Page Size (records per batch)</label>
                 <input
                   className="input"
                   type="number"
