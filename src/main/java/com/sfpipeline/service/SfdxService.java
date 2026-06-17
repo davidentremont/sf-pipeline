@@ -11,7 +11,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-@Service
+/** @deprecated Replaced by SalesforceService — uses direct REST API instead of sf CLI */
+@Deprecated
 public class SfdxService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();

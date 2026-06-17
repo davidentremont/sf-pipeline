@@ -17,11 +17,12 @@ export default function App() {
   const { state, startPipeline, stopPipeline } = usePipeline()
   const { jobs, selectedJob, selectJob, loading: jobsLoading, reload: reloadJobs } = useJobs()
 
-  const [org, setOrg]             = useState('')
-  const [batchSize, setBatchSize] = useState(1000)
-  const [threads, setThreads]     = useState(5)
+  const [instanceUrl, setInstanceUrl]   = useState('')
+  const [accessToken, setAccessToken]   = useState('')
+  const [showToken, setShowToken]       = useState(false)
+  const [batchSize, setBatchSize]       = useState(1000)
+  const [threads, setThreads]           = useState(5)
 
-  // Sync defaults when job changes
   useEffect(() => {
     if (selectedJob) {
       setBatchSize(selectedJob.defaultBatchSize || 1000)
@@ -29,11 +30,12 @@ export default function App() {
     }
   }, [selectedJob?.id])
 
-  const canStart = state.connected && selectedJob && org.trim() && state.status !== 'running' && state.status !== 'stopping'
-  const canStop  = state.status === 'running'
+  const isRunning = state.status === 'running' || state.status === 'stopping'
+  const canStart  = state.connected && selectedJob && instanceUrl.trim() && accessToken.trim() && !isRunning
+  const canStop   = state.status === 'running'
 
   function handleStart() {
-    if (canStart) startPipeline(selectedJob.id, org.trim(), batchSize, threads)
+    if (canStart) startPipeline(selectedJob.id, instanceUrl.trim(), accessToken.trim(), batchSize, threads)
   }
 
   const statusColor = {
@@ -46,25 +48,19 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
       <header className="bg-sf-dark text-white px-6 py-3 flex items-center justify-between shadow-md">
-        <div className="flex items-center gap-3">
-          <span className="text-xl font-bold tracking-tight">⚡ SF Async Data Pipeline</span>
-        </div>
+        <span className="text-xl font-bold tracking-tight">SF Async Data Pipeline</span>
         <div className="flex items-center gap-4">
-          <span className={`text-sm capitalize ${statusColor[state.status]}`}>
-            {state.status}
-          </span>
+          <span className={`text-sm capitalize ${statusColor[state.status]}`}>{state.status}</span>
           <StatusDot connected={state.connected} />
         </div>
       </header>
 
       <main className="flex-1 p-5 max-w-7xl mx-auto w-full space-y-4">
 
-        {/* Top row: Job + Config */}
+        {/* Top row: Job selector + Job details */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-          {/* Job Selector */}
           <div className="card">
             <div className="card-header flex items-center justify-between">
               <span>Jobs</span>
@@ -92,7 +88,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Job Details */}
           <div className="card lg:col-span-2">
             {selectedJob ? (
               <>
@@ -128,65 +123,84 @@ export default function App() {
           </div>
         </div>
 
-        {/* Config + Controls */}
+        {/* Credentials + Pipeline config */}
         <div className="card">
           <div className="card-header">Configuration &amp; Controls</div>
-          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+          <div className="p-4 space-y-3">
 
-            <div className="lg:col-span-2">
-              <label className="label">Salesforce Org Username</label>
-              <input
-                className="input"
-                type="text"
-                value={org}
-                onChange={e => setOrg(e.target.value)}
-                placeholder="user@example.com or alias"
-                disabled={state.status === 'running'}
-              />
+            {/* Row 1: credentials */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <label className="label">Instance URL</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={instanceUrl}
+                  onChange={e => setInstanceUrl(e.target.value)}
+                  placeholder="https://myorg.my.salesforce.com"
+                  disabled={isRunning}
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <label className="label">Access Token</label>
+                <div className="relative">
+                  <input
+                    className="input pr-16"
+                    type={showToken ? 'text' : 'password'}
+                    value={accessToken}
+                    onChange={e => setAccessToken(e.target.value)}
+                    placeholder="00D…"
+                    disabled={isRunning}
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowToken(v => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 px-1"
+                  >
+                    {showToken ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="label">Batch Size (SOQL LIMIT)</label>
-              <input
-                className="input"
-                type="number"
-                min={1}
-                max={50000}
-                value={batchSize}
-                onChange={e => setBatchSize(Number(e.target.value))}
-                disabled={state.status === 'running'}
-              />
+            {/* Row 2: pipeline params + controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+              <div>
+                <label className="label">Batch Size (SOQL LIMIT)</label>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={50000}
+                  value={batchSize}
+                  onChange={e => setBatchSize(Number(e.target.value))}
+                  disabled={isRunning}
+                />
+              </div>
+              <div>
+                <label className="label">Worker Threads</label>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={threads}
+                  onChange={e => setThreads(Number(e.target.value))}
+                  disabled={isRunning}
+                />
+              </div>
+              <div className="flex gap-2">
+                <button className="btn-primary flex-1" onClick={handleStart} disabled={!canStart}>
+                  ▶ Start
+                </button>
+                <button className="btn-danger flex-1" onClick={stopPipeline} disabled={!canStop}>
+                  ■ Stop
+                </button>
+              </div>
             </div>
 
-            <div>
-              <label className="label">Worker Threads</label>
-              <input
-                className="input"
-                type="number"
-                min={1}
-                max={50}
-                value={threads}
-                onChange={e => setThreads(Number(e.target.value))}
-                disabled={state.status === 'running'}
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                className="btn-primary flex-1"
-                onClick={handleStart}
-                disabled={!canStart}
-              >
-                ▶ Start
-              </button>
-              <button
-                className="btn-danger flex-1"
-                onClick={stopPipeline}
-                disabled={!canStop}
-              >
-                ■ Stop
-              </button>
-            </div>
           </div>
 
           {state.error && (
@@ -196,16 +210,13 @@ export default function App() {
           )}
         </div>
 
-        {/* Worker Monitor */}
         <WorkerMonitor workers={state.workers} progress={state.progress} />
-
-        {/* Event Log */}
         <EventLog events={state.events} />
 
       </main>
 
       <footer className="text-center text-xs text-gray-400 py-3 border-t border-sf-border">
-        SF Async Data Pipeline · Spring Boot + React · Powered by Salesforce CLI
+        SF Async Data Pipeline · Spring Boot + React · Salesforce REST API
       </footer>
     </div>
   )

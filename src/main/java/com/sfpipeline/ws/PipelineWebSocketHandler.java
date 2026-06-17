@@ -20,11 +20,8 @@ import java.util.concurrent.CopyOnWriteArraySet;
 @Component
 public class PipelineWebSocketHandler extends TextWebSocketHandler {
 
-    @Autowired
-    private PipelineEngine pipelineEngine;
-
-    @Autowired
-    private JobService jobService;
+    @Autowired private PipelineEngine pipelineEngine;
+    @Autowired private JobService jobService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Set<WebSocketSession> sessions = new CopyOnWriteArraySet<>();
@@ -40,28 +37,32 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         JsonNode msg = objectMapper.readTree(message.getPayload());
-        String type = msg.path("type").asText();
-
-        switch (type) {
+        switch (msg.path("type").asText()) {
             case "START" -> handleStart(session, msg);
             case "STOP"  -> pipelineEngine.stop();
-            default      -> send(session, new PipelineEvent("ERROR").with("message", "Unknown command: " + type));
+            default      -> send(session, new PipelineEvent("ERROR")
+                    .with("message", "Unknown command: " + msg.path("type").asText()));
         }
     }
 
-    private void handleStart(WebSocketSession session, JsonNode msg) throws Exception {
+    private void handleStart(WebSocketSession session, JsonNode msg) {
         if (pipelineEngine.isRunning()) {
             send(session, new PipelineEvent("ERROR").with("message", "Pipeline is already running"));
             return;
         }
 
-        String jobId    = msg.path("jobId").asText();
-        String org      = msg.path("org").asText();
-        int batchSize   = msg.path("batchSize").asInt(1000);
-        int threads     = msg.path("threads").asInt(5);
+        String jobId       = msg.path("jobId").asText();
+        String instanceUrl = msg.path("instanceUrl").asText();
+        String accessToken = msg.path("accessToken").asText();
+        int batchSize      = msg.path("batchSize").asInt(1000);
+        int threads        = msg.path("threads").asInt(5);
 
-        if (org.isBlank()) {
-            send(session, new PipelineEvent("ERROR").with("message", "Salesforce org username is required"));
+        if (instanceUrl.isBlank()) {
+            send(session, new PipelineEvent("ERROR").with("message", "Instance URL is required"));
+            return;
+        }
+        if (accessToken.isBlank()) {
+            send(session, new PipelineEvent("ERROR").with("message", "Access token is required"));
             return;
         }
 
@@ -75,7 +76,8 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
 
         PipelineConfig config = new PipelineConfig();
         config.setJob(job);
-        config.setOrg(org);
+        config.setInstanceUrl(instanceUrl);
+        config.setAccessToken(accessToken);
         config.setBatchSize(batchSize);
         config.setThreads(threads);
 
@@ -95,19 +97,16 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
     public void broadcast(PipelineEvent event) {
         if (sessions.isEmpty()) return;
         try {
-            String json = objectMapper.writeValueAsString(event);
-            TextMessage msg = new TextMessage(json);
+            TextMessage msg = new TextMessage(objectMapper.writeValueAsString(event));
             for (WebSocketSession session : sessions) {
                 if (session.isOpen()) {
                     synchronized (session) {
-                        try {
-                            session.sendMessage(msg);
-                        } catch (Exception ignored) {}
+                        try { session.sendMessage(msg); } catch (Exception ignored) {}
                     }
                 }
             }
         } catch (Exception e) {
-            System.err.println("Failed to broadcast event: " + e.getMessage());
+            System.err.println("Broadcast failed: " + e.getMessage());
         }
     }
 
@@ -115,7 +114,7 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
         try {
             session.sendMessage(new TextMessage(objectMapper.writeValueAsString(event)));
         } catch (Exception e) {
-            System.err.println("Failed to send to session " + session.getId() + ": " + e.getMessage());
+            System.err.println("Send failed: " + e.getMessage());
         }
     }
 }

@@ -1,18 +1,24 @@
 package com.sfpipeline.plugin.impl;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sfpipeline.plugin.Plugin;
 import com.sfpipeline.plugin.PluginContext;
+import com.sfpipeline.service.SalesforceService;
 import org.springframework.stereotype.Component;
+
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * Sample plugin: runs an Apex script via the SF CLI for each chunk of records.
- * Demonstrates how to call sfdx commands from a plugin.
- */
 @Component
 public class SfdxApexPlugin implements Plugin {
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public String getName() { return "SfdxApexPlugin"; }
@@ -21,7 +27,7 @@ public class SfdxApexPlugin implements Plugin {
     public String getVersion() { return "1.0"; }
 
     @Override
-    public String getDescription() { return "Runs an anonymous Apex script for each record chunk via the SF CLI"; }
+    public String getDescription() { return "Runs anonymous Apex via the Salesforce Tooling API REST endpoint"; }
 
     @Override
     public List<Map<String, Object>> execute(List<Map<String, Object>> input, PluginContext context) throws Exception {
@@ -29,22 +35,40 @@ public class SfdxApexPlugin implements Plugin {
                 .map(r -> "'" + r.get("Id") + "'")
                 .collect(Collectors.toList());
 
-        String idList = String.join(",", ids);
         String apex = String.format(
-            "List<Id> recordIds = new List<Id>{%s};\n" +
-            "System.debug('Worker %d processing ' + recordIds.size() + ' records');\n",
-            idList, context.getWorkerId()
-        );
+                "List<Id> recordIds = new List<Id>{%s};\n" +
+                "System.debug('Worker %d processing ' + recordIds.size() + ' records');",
+                String.join(",", ids), context.getWorkerId());
 
-        java.io.File tmpFile = java.io.File.createTempFile("apex_worker_" + context.getWorkerId() + "_", ".apex");
-        try {
-            java.nio.file.Files.writeString(tmpFile.toPath(), apex);
-            String result = context.runCommand("apex", "run", "--file", tmpFile.getAbsolutePath());
-            context.log("Apex executed. Result: " + result.substring(0, Math.min(result.length(), 200)));
-        } finally {
-            tmpFile.delete();
+        String urlStr = context.getInstanceUrl()
+                + "/services/data/" + SalesforceService.API_VERSION
+                + "/tooling/executeAnonymous?anonymousBody="
+                + URLEncoder.encode(apex, StandardCharsets.UTF_8);
+
+        HttpURLConnection conn = (HttpURLConnection) URI.create(urlStr).toURL().openConnection();
+        conn.setRequestMethod("GET");
+        conn.setRequestProperty("Authorization", "Bearer " + context.getAccessToken());
+        conn.setRequestProperty("Accept", "application/json");
+        conn.setConnectTimeout(30000);
+        conn.setReadTimeout(30000);
+
+        int code = conn.getResponseCode();
+        String body = code >= 200 && code < 300
+                ? new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
+                : new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+        conn.disconnect();
+
+        if (code < 200 || code >= 300) {
+            throw new RuntimeException("Tooling API returned HTTP " + code + ": " + body);
         }
 
+        JsonNode result = objectMapper.readTree(body);
+        if (!result.path("success").asBoolean()) {
+            String problem = result.path("compileProblem").asText(result.path("exceptionMessage").asText("unknown error"));
+            throw new RuntimeException("Apex execution failed: " + problem);
+        }
+
+        context.log("Apex executed for " + input.size() + " records");
         return input;
     }
 }

@@ -14,5 +14,6 @@
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/plugin/impl/SfdxApexPlugin.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/plugin/impl/ShareCalculatorPlugin.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/service/JobService.java
+/Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/service/SalesforceService.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/service/SfdxService.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/ws/PipelineWebSocketHandler.java

@@ -9,7 +9,6 @@ import org.springframework.stereotype.Component;
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URI;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -41,9 +40,8 @@ public class ShareCalculatorPlugin implements Plugin {
         String objectType = (String) config.getOrDefault("objectType", "Case");
         int batchSize = ((Number) config.getOrDefault("batchSize", DEFAULT_BATCH_SIZE)).intValue();
 
-        String[] creds = orgCredentials(context);
-        String instanceUrl = creds[0];
-        String accessToken = creds[1];
+        String instanceUrl = context.getInstanceUrl();
+        String accessToken = context.getAccessToken();
 
         context.log("ShareCalculatorPlugin: objectType=" + objectType + ", batchSize=" + batchSize);
 
@@ -68,17 +66,6 @@ public class ShareCalculatorPlugin implements Plugin {
         Map<String, Map<String, Object>> all = context.getJob().getPluginConfig();
         if (all != null && all.containsKey(getName())) return all.get(getName());
         return Collections.emptyMap();
-    }
-
-    private String[] orgCredentials(PluginContext context) throws Exception {
-        String json = context.runCommand("org", "display", "--json");
-        JsonNode result = objectMapper.readTree(json).path("result");
-        String instanceUrl = result.path("instanceUrl").asText();
-        String accessToken = result.path("accessToken").asText();
-        if (instanceUrl.isBlank() || accessToken.isBlank()) {
-            throw new RuntimeException("Could not retrieve org credentials from sf org display");
-        }
-        return new String[]{instanceUrl, accessToken};
     }
 
     private int processBatch(List<String> ids, String objectType, String instanceUrl,
@@ -154,9 +141,7 @@ public class ShareCalculatorPlugin implements Plugin {
         List<String> out = new ArrayList<>();
         JsonNode records = objectMapper.readTree(json).path("records");
         if (records.isArray()) {
-            for (JsonNode record : records) {
-                out.add(objectMapper.writeValueAsString(record));
-            }
+            for (JsonNode record : records) out.add(objectMapper.writeValueAsString(record));
         }
         return out;
     }

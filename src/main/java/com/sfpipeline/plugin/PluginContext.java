@@ -1,38 +1,36 @@
 package com.sfpipeline.plugin;
 
 import com.sfpipeline.model.Job;
-import com.sfpipeline.service.SfdxService;
+import com.sfpipeline.service.SalesforceService;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
 public class PluginContext {
     private final int workerId;
-    private final String org;
+    private final String instanceUrl;
+    private final String accessToken;
     private final Job job;
-    private final SfdxService sfdxService;
+    private final SalesforceService salesforceService;
     private final Consumer<String> logger;
 
-    public PluginContext(int workerId, String org, Job job, SfdxService sfdxService, Consumer<String> logger) {
+    public PluginContext(int workerId, String instanceUrl, String accessToken,
+                         Job job, SalesforceService salesforceService, Consumer<String> logger) {
         this.workerId = workerId;
-        this.org = org;
+        this.instanceUrl = instanceUrl;
+        this.accessToken = accessToken;
         this.job = job;
-        this.sfdxService = sfdxService;
+        this.salesforceService = salesforceService;
         this.logger = logger;
     }
 
     public int getWorkerId() { return workerId; }
-    public String getOrg() { return org; }
+    public String getInstanceUrl() { return instanceUrl; }
+    public String getAccessToken() { return accessToken; }
     public Job getJob() { return job; }
 
-    /** Run an sfdx CLI command. Returns parsed JSON result. */
     public List<Map<String, Object>> runQuery(String soql) throws Exception {
-        return sfdxService.runQuery(soql, org);
-    }
-
-    /** Run any sf CLI command and return stdout as a string. */
-    public String runCommand(String... args) throws Exception {
-        return sfdxService.runCommand(org, args);
+        return salesforceService.runQuery(soql, instanceUrl, accessToken);
     }
 
     public void log(String message) {

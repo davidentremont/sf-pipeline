@@ -4,7 +4,7 @@ const WS_URL = `ws://${window.location.host}/ws`
 
 const INITIAL = {
   connected: false,
-  status: 'idle',       // idle | running | stopping | completed | error
+  status: 'idle',
   workers: [],
   progress: { processed: 0, batch: 0 },
   events: [],
@@ -27,7 +27,7 @@ function reducer(state, action) {
 
     case 'STARTED':
       return {
-        ...addEvent(`Pipeline started — job: ${action.job}, org: ${action.org}, batch: ${action.batchSize}, threads: ${action.threads}`),
+        ...addEvent(`Pipeline started — job: ${action.job}, instance: ${action.instanceUrl}, batch: ${action.batchSize}, threads: ${action.threads}`),
         status: 'running',
         workers: [],
         progress: { processed: 0, batch: 0 },
@@ -116,15 +116,10 @@ export function usePipeline() {
     const ws = new WebSocket(WS_URL)
     wsRef.current = ws
 
-    ws.onopen = () => {
-      clearTimeout(reconnectTimer.current)
-    }
+    ws.onopen = () => clearTimeout(reconnectTimer.current)
 
     ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data)
-        dispatch(msg)
-      } catch {}
+      try { dispatch(JSON.parse(e.data)) } catch {}
     }
 
     ws.onclose = () => {
@@ -149,13 +144,11 @@ export function usePipeline() {
     }
   }, [])
 
-  const startPipeline = useCallback((jobId, org, batchSize, threads) => {
-    send({ type: 'START', jobId, org, batchSize: Number(batchSize), threads: Number(threads) })
+  const startPipeline = useCallback((jobId, instanceUrl, accessToken, batchSize, threads) => {
+    send({ type: 'START', jobId, instanceUrl, accessToken, batchSize: Number(batchSize), threads: Number(threads) })
   }, [send])
 
-  const stopPipeline = useCallback(() => {
-    send({ type: 'STOP' })
-  }, [send])
+  const stopPipeline = useCallback(() => send({ type: 'STOP' }), [send])
 
   return { state, startPipeline, stopPipeline }
 }

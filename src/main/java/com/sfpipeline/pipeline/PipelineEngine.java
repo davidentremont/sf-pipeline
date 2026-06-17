@@ -6,7 +6,7 @@ import com.sfpipeline.model.PipelineEvent;
 import com.sfpipeline.plugin.Plugin;
 import com.sfpipeline.plugin.PluginContext;
 import com.sfpipeline.plugin.PluginRegistry;
-import com.sfpipeline.service.SfdxService;
+import com.sfpipeline.service.SalesforceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -17,7 +17,6 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
-import java.util.stream.IntStream;
 
 @Service
 public class PipelineEngine {
@@ -29,42 +28,37 @@ public class PipelineEngine {
     private PluginRegistry pluginRegistry;
 
     @Autowired
-    private SfdxService sfdxService;
+    private SalesforceService salesforceService;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicLong totalProcessed = new AtomicLong(0);
     private volatile Consumer<PipelineEvent> eventEmitter;
     private volatile ExecutorService workerPool;
 
-    public boolean isRunning() {
-        return running.get();
-    }
+    public boolean isRunning() { return running.get(); }
 
     public void start(PipelineConfig config, Consumer<PipelineEvent> emitter) {
         if (!running.compareAndSet(false, true)) {
             emitter.accept(new PipelineEvent("ERROR").with("message", "Pipeline is already running"));
             return;
         }
-
         this.eventEmitter = emitter;
         this.totalProcessed.set(0);
-
-        Thread pipelineThread = new Thread(() -> runPipeline(config), "pipeline-main");
-        pipelineThread.setDaemon(true);
-        pipelineThread.start();
+        Thread t = new Thread(() -> runPipeline(config), "pipeline-main");
+        t.setDaemon(true);
+        t.start();
     }
 
     public void stop() {
         running.set(false);
         emit(new PipelineEvent("STOPPING"));
-        if (workerPool != null) {
-            workerPool.shutdownNow();
-        }
+        if (workerPool != null) workerPool.shutdownNow();
     }
 
     private void runPipeline(PipelineConfig config) {
         Job job = config.getJob();
-        String org = config.getOrg();
+        String instanceUrl = config.getInstanceUrl();
+        String accessToken = config.getAccessToken();
         int batchSize = config.getBatchSize();
         int threads = config.getThreads();
 
@@ -72,7 +66,7 @@ public class PipelineEngine {
 
         emit(new PipelineEvent("STARTED")
                 .with("job", job.getName())
-                .with("org", org)
+                .with("instanceUrl", instanceUrl)
                 .with("batchSize", batchSize)
                 .with("threads", threads)
                 .with("plugins", job.getPlugins()));
@@ -92,7 +86,7 @@ public class PipelineEngine {
 
                 List<Map<String, Object>> records;
                 try {
-                    records = queryEngine.query(job.getQuery(), lastId, batchSize, org);
+                    records = queryEngine.query(job.getQuery(), lastId, batchSize, instanceUrl, accessToken);
                 } catch (Exception e) {
                     emit(new PipelineEvent("ERROR").with("message", "Query failed: " + e.getMessage()));
                     break;
@@ -113,28 +107,21 @@ public class PipelineEngine {
                         .with("firstId", records.get(0).get("Id"))
                         .with("lastId", lastId));
 
-                // Chunk records across workers
                 List<List<Map<String, Object>>> chunks = chunkList(records, threads);
                 int actualWorkers = chunks.size();
 
-                // Initialize worker status display
                 List<Map<String, Object>> workerInit = new ArrayList<>();
                 for (int i = 0; i < actualWorkers; i++) {
-                    workerInit.add(Map.of(
-                            "id", i + 1,
-                            "status", "waiting",
-                            "records", chunks.get(i).size()));
+                    workerInit.add(Map.of("id", i + 1, "status", "waiting", "records", chunks.get(i).size()));
                 }
                 emit(new PipelineEvent("WORKERS_INIT").with("workers", workerInit));
 
-                // Run all workers in parallel and wait
                 List<CompletableFuture<Void>> futures = new ArrayList<>();
                 for (int i = 0; i < actualWorkers; i++) {
                     final int workerId = i + 1;
                     final List<Map<String, Object>> chunk = chunks.get(i);
                     futures.add(CompletableFuture.runAsync(
-                            () -> runWorker(workerId, chunk, plugins, config),
-                            workerPool));
+                            () -> runWorker(workerId, chunk, plugins, config), workerPool));
                 }
 
                 try {
@@ -163,7 +150,7 @@ public class PipelineEngine {
     }
 
     private void runWorker(int workerId, List<Map<String, Object>> records,
-                           List<Plugin> plugins, PipelineConfig config) {
+                            List<Plugin> plugins, PipelineConfig config) {
         emit(new PipelineEvent("WORKER_START")
                 .with("workerId", workerId)
                 .with("count", records.size()));
@@ -177,7 +164,8 @@ public class PipelineEngine {
                     .with("plugin", plugin.getName()));
 
             PluginContext ctx = new PluginContext(
-                    workerId, config.getOrg(), config.getJob(), sfdxService,
+                    workerId, config.getInstanceUrl(), config.getAccessToken(),
+                    config.getJob(), salesforceService,
                     msg -> emit(new PipelineEvent("WORKER_LOG")
                             .with("workerId", workerId)
                             .with("message", msg)));
@@ -199,10 +187,9 @@ public class PipelineEngine {
 
     private static <T> List<List<T>> chunkList(List<T> list, int numChunks) {
         List<List<T>> chunks = new ArrayList<>();
-        int total = list.size();
-        int chunkSize = (int) Math.ceil((double) total / numChunks);
-        for (int i = 0; i < total; i += chunkSize) {
-            chunks.add(list.subList(i, Math.min(i + chunkSize, total)));
+        int chunkSize = (int) Math.ceil((double) list.size() / numChunks);
+        for (int i = 0; i < list.size(); i += chunkSize) {
+            chunks.add(list.subList(i, Math.min(i + chunkSize, list.size())));
         }
         return chunks;
     }
@@ -210,9 +197,7 @@ public class PipelineEngine {
     private void emit(PipelineEvent event) {
         Consumer<PipelineEvent> emitter = this.eventEmitter;
         if (emitter != null) {
-            try {
-                emitter.accept(event);
-            } catch (Exception ignored) {}
+            try { emitter.accept(event); } catch (Exception ignored) {}
         }
     }
 }
