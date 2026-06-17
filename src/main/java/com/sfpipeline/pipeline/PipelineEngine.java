@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -71,9 +72,13 @@ public class PipelineEngine {
                 .with("threads", threads)
                 .with("plugins", job.getPlugins()));
 
-        workerPool = Executors.newFixedThreadPool(threads);
+        // CachedThreadPool grows as needed — workers from multiple batches run concurrently.
+        workerPool = Executors.newCachedThreadPool();
+        AtomicInteger workerIdSeq = new AtomicInteger(0);
+        List<CompletableFuture<Void>> allFutures = new ArrayList<>();
         String lastId = null;
         int batchNum = 0;
+        boolean completedNormally = false;
 
         try {
             while (running.get()) {
@@ -93,9 +98,7 @@ public class PipelineEngine {
                 }
 
                 if (records.isEmpty()) {
-                    emit(new PipelineEvent("COMPLETE")
-                            .with("totalProcessed", totalProcessed.get())
-                            .with("message", "No more records"));
+                    completedNormally = true;
                     break;
                 }
 
@@ -111,30 +114,42 @@ public class PipelineEngine {
                 int actualWorkers = chunks.size();
 
                 List<Map<String, Object>> workerInit = new ArrayList<>();
+                List<Integer> workerIds = new ArrayList<>();
                 for (int i = 0; i < actualWorkers; i++) {
-                    workerInit.add(Map.of("id", i + 1, "status", "waiting", "records", chunks.get(i).size()));
+                    int wid = workerIdSeq.incrementAndGet();
+                    workerIds.add(wid);
+                    workerInit.add(Map.of("id", wid, "status", "waiting", "records", chunks.get(i).size()));
                 }
                 emit(new PipelineEvent("WORKERS_INIT").with("workers", workerInit));
 
-                List<CompletableFuture<Void>> futures = new ArrayList<>();
+                // Dispatch workers and immediately continue to the next batch query.
                 for (int i = 0; i < actualWorkers; i++) {
-                    final int workerId = i + 1;
+                    final int workerId = workerIds.get(i);
                     final List<Map<String, Object>> chunk = chunks.get(i);
-                    futures.add(CompletableFuture.runAsync(
-                            () -> runWorker(workerId, chunk, plugins, config), workerPool));
+                    allFutures.add(CompletableFuture.runAsync(() -> {
+                        runWorker(workerId, chunk, plugins, config);
+                        totalProcessed.addAndGet(chunk.size());
+                    }, workerPool));
                 }
 
-                try {
-                    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-                } catch (CancellationException e) {
-                    break;
-                }
-
-                totalProcessed.addAndGet(records.size());
                 emit(new PipelineEvent("BATCH_COMPLETE")
                         .with("batch", batchNum)
                         .with("totalProcessed", totalProcessed.get()));
             }
+
+            // Query loop exhausted — wait for all in-flight workers across all batches.
+            if (!allFutures.isEmpty()) {
+                try {
+                    CompletableFuture.allOf(allFutures.toArray(new CompletableFuture[0])).join();
+                } catch (CompletionException | CancellationException ignored) {}
+            }
+
+            if (completedNormally) {
+                emit(new PipelineEvent("COMPLETE")
+                        .with("totalProcessed", totalProcessed.get())
+                        .with("message", "All records processed"));
+            }
+
         } finally {
             running.set(false);
             workerPool.shutdown();

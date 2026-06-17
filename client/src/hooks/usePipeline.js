@@ -45,7 +45,10 @@ function reducer(state, action) {
     case 'WORKERS_INIT':
       return {
         ...state,
-        workers: action.workers.map(w => ({ ...w, status: 'waiting', currentPlugin: null }))
+        workers: [
+          ...state.workers,
+          ...action.workers.map(w => ({ ...w, status: 'waiting', currentPlugin: null }))
+        ]
       }
     case 'WORKER_START':
       return {
