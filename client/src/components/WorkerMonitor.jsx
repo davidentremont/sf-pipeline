@@ -1,5 +1,12 @@
 import React from 'react'
 
+function formatEta(seconds) {
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`
+  const h = Math.floor(seconds / 3600)
+  return `${h}h ${Math.floor((seconds % 3600) / 60)}m`
+}
+
 const STATUS_RING = {
   waiting: 'bg-gray-200 border-gray-300',
   running: 'bg-green-100 border-green-400',
@@ -17,7 +24,7 @@ const STATUS_TEXT = {
 
 export default function WorkerMonitor({ workers, progress }) {
   const runningCount = workers.length
-  const { processed, batch, totalCount } = progress
+  const { processed, batch, totalCount, sessionStart, sessionBaseProcessed } = progress
 
   const pct = totalCount > 0
     ? Math.min(100, (processed / totalCount) * 100)
@@ -28,6 +35,13 @@ export default function WorkerMonitor({ workers, progress }) {
     : processed > 0
       ? `${processed.toLocaleString()} records`
       : null
+
+  const elapsedSec = sessionStart ? (Date.now() - sessionStart) / 1000 : 0
+  const processedThisRun = processed - (sessionBaseProcessed || 0)
+  const rate = elapsedSec > 15 && processedThisRun > 0 ? processedThisRun / elapsedSec : null
+  const etaSeconds = rate && totalCount > 0 && processed < totalCount
+    ? (totalCount - processed) / rate
+    : null
 
   return (
     <div className="card">
@@ -61,8 +75,17 @@ export default function WorkerMonitor({ workers, progress }) {
           </div>
           {pct != null && (
             <div className="flex justify-between text-xs text-gray-400">
-              <span>{processed.toLocaleString()} processed</span>
-              <span>{(totalCount - processed).toLocaleString()} remaining</span>
+              <span>
+                {processed.toLocaleString()} processed
+                {rate != null && (
+                  <span className="ml-2 text-gray-400">· ~{rate < 10 ? rate.toFixed(1) : Math.round(rate)} rec/s</span>
+                )}
+              </span>
+              <span>
+                {etaSeconds != null
+                  ? `ETA ${formatEta(etaSeconds)}`
+                  : `${(totalCount - processed).toLocaleString()} remaining`}
+              </span>
             </div>
           )}
         </div>

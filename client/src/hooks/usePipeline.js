@@ -6,7 +6,7 @@ const INITIAL = {
   connected: false,
   status: 'idle',
   workers: [],
-  progress: { processed: 0, batch: 0, totalCount: 0 },
+  progress: { processed: 0, batch: 0, totalCount: 0, sessionStart: null, sessionBaseProcessed: 0 },
   events: [],
   error: null,
   currentQuery: null,
@@ -30,7 +30,11 @@ function reducer(state, action) {
         ...addEvent(`Pipeline started — job: ${action.job}, instance: ${action.instanceUrl}, batch: ${action.batchSize}, threads: ${action.threads}`),
         status: 'running',
         workers: [],
-        progress: { processed: 0, batch: 0, totalCount: 0 },
+        progress: {
+          processed: 0, batch: 0, totalCount: 0,
+          sessionStart: action._ts,
+          sessionBaseProcessed: action.initialProcessed || 0,
+        },
         error: null,
       }
     case 'TOTAL_COUNT':
@@ -125,7 +129,7 @@ export function usePipeline() {
     ws.onopen = () => clearTimeout(reconnectTimer.current)
 
     ws.onmessage = (e) => {
-      try { dispatch(JSON.parse(e.data)) } catch {}
+      try { dispatch({ ...JSON.parse(e.data), _ts: Date.now() }) } catch {}
     }
 
     ws.onclose = () => {

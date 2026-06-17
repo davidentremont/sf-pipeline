@@ -42,10 +42,9 @@ public class ProgressService {
                         PRIMARY KEY (job_id, instance_url)
                     )
                 """);
-                // Migration: add total_count if upgrading from an older schema
-                try {
-                    st.execute("ALTER TABLE pipeline_progress ADD COLUMN total_count INTEGER DEFAULT 0");
-                } catch (SQLException ignored) {}
+                // Migrations: add columns added after initial schema
+                try { st.execute("ALTER TABLE pipeline_progress ADD COLUMN total_count INTEGER DEFAULT 0"); } catch (SQLException ignored) {}
+                try { st.execute("ALTER TABLE pipeline_progress ADD COLUMN finished_at TEXT"); } catch (SQLException ignored) {}
             }
         } catch (Exception e) {
             System.err.println("ProgressService init failed: " + e.getMessage());
@@ -69,8 +68,8 @@ public class ProgressService {
     public synchronized void upsert(PipelineProgress p) {
         String sql = """
             INSERT INTO pipeline_progress
-                (job_id, instance_url, query, last_id, total_processed, batch_num, total_count, status, started_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (job_id, instance_url, query, last_id, total_processed, batch_num, total_count, status, started_at, updated_at, finished_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(job_id, instance_url) DO UPDATE SET
                 query           = excluded.query,
                 last_id         = excluded.last_id,
@@ -79,7 +78,8 @@ public class ProgressService {
                 total_count     = excluded.total_count,
                 status          = excluded.status,
                 started_at      = excluded.started_at,
-                updated_at      = excluded.updated_at
+                updated_at      = excluded.updated_at,
+                finished_at     = excluded.finished_at
         """;
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, p.getJobId());
@@ -92,6 +92,7 @@ public class ProgressService {
             ps.setString(8, p.getStatus());
             ps.setString(9, p.getStartedAt());
             ps.setString(10, p.getUpdatedAt());
+            ps.setString(11, p.getFinishedAt());
             ps.executeUpdate();
         } catch (Exception e) {
             System.err.println("ProgressService.upsert failed: " + e.getMessage());
@@ -135,14 +136,15 @@ public class ProgressService {
     public synchronized void setStatus(String jobId, String instanceUrl, String status, long totalProcessed) {
         try (PreparedStatement ps = connection.prepareStatement("""
                 UPDATE pipeline_progress
-                SET status = ?, total_processed = ?, updated_at = ?
+                SET status = ?, total_processed = ?, updated_at = ?, finished_at = ?
                 WHERE job_id = ? AND instance_url = ?
             """)) {
             ps.setString(1, status);
             ps.setLong(2, totalProcessed);
             ps.setString(3, now());
-            ps.setString(4, jobId);
-            ps.setString(5, instanceUrl);
+            ps.setString(4, now());
+            ps.setString(5, jobId);
+            ps.setString(6, instanceUrl);
             ps.executeUpdate();
         } catch (Exception e) {
             System.err.println("ProgressService.setStatus failed: " + e.getMessage());
@@ -173,6 +175,7 @@ public class ProgressService {
         p.setStatus(rs.getString("status"));
         p.setStartedAt(rs.getString("started_at"));
         p.setUpdatedAt(rs.getString("updated_at"));
+        p.setFinishedAt(rs.getString("finished_at"));
         return p;
     }
 

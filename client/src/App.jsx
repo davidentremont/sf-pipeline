@@ -21,11 +21,21 @@ const STATUS_BADGE = {
   completed: 'bg-green-100 text-green-800 border-green-300',
 }
 
+function fmtDuration(startedAt, finishedAt) {
+  if (!startedAt) return null
+  const ms = (finishedAt ? new Date(finishedAt) : new Date()) - new Date(startedAt)
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+}
+
 function ResumeBar({ prog, onResume, onFresh, disabled }) {
   if (!prog) return null
 
   const canResume = prog.lastId && prog.status !== 'completed'
   const badgeCls  = STATUS_BADGE[prog.status] || STATUS_BADGE.stopped
+  const duration  = fmtDuration(prog.startedAt, prog.finishedAt)
 
   return (
     <div className="rounded border border-sf-border bg-gray-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -41,10 +51,16 @@ function ResumeBar({ prog, onResume, onFresh, disabled }) {
               : `${prog.totalProcessed.toLocaleString()} records`
             } · Batch {prog.batchNum}
           </span>
-          {prog.updatedAt && (
-            <span className="text-xs text-gray-400">
-              {new Date(prog.updatedAt).toLocaleString()}
-            </span>
+          {duration && (
+            <span className="text-xs text-gray-400">· {duration}</span>
+          )}
+        </div>
+        <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-400">
+          {prog.startedAt && (
+            <span>Started {new Date(prog.startedAt).toLocaleString()}</span>
+          )}
+          {prog.finishedAt && (
+            <span>Finished {new Date(prog.finishedAt).toLocaleString()}</span>
           )}
         </div>
         {prog.totalCount > 0 && (

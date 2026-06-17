@@ -11,6 +11,7 @@ public class PipelineProgress {
     private long totalCount;
     private String startedAt;
     private String updatedAt;
+    private String finishedAt;
 
     public String getJobId() { return jobId; }
     public void setJobId(String jobId) { this.jobId = jobId; }
@@ -41,4 +42,7 @@ public class PipelineProgress {
 
     public String getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
+
+    public String getFinishedAt() { return finishedAt; }
+    public void setFinishedAt(String finishedAt) { this.finishedAt = finishedAt; }
 }
