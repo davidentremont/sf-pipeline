@@ -8,6 +8,7 @@ public class PipelineProgress {
     private long totalProcessed;
     private int batchNum;
     private String status;
+    private long totalCount;
     private String startedAt;
     private String updatedAt;
 
@@ -31,6 +32,9 @@ public class PipelineProgress {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public long getTotalCount() { return totalCount; }
+    public void setTotalCount(long totalCount) { this.totalCount = totalCount; }
 
     public String getStartedAt() { return startedAt; }
     public void setStartedAt(String startedAt) { this.startedAt = startedAt; }

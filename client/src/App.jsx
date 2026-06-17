@@ -36,7 +36,10 @@ function ResumeBar({ prog, onResume, onFresh, disabled }) {
           </span>
           <span className="text-sm font-medium text-gray-700">Previous run</span>
           <span className="text-xs text-gray-500">
-            {prog.totalProcessed.toLocaleString()} records · Batch {prog.batchNum}
+            {prog.totalCount > 0
+              ? `${prog.totalProcessed.toLocaleString()} / ${prog.totalCount.toLocaleString()} (${((prog.totalProcessed / prog.totalCount) * 100).toFixed(1)}%)`
+              : `${prog.totalProcessed.toLocaleString()} records`
+            } · Batch {prog.batchNum}
           </span>
           {prog.updatedAt && (
             <span className="text-xs text-gray-400">
@@ -44,6 +47,14 @@ function ResumeBar({ prog, onResume, onFresh, disabled }) {
             </span>
           )}
         </div>
+        {prog.totalCount > 0 && (
+          <div className="mt-2 w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-sf-blue rounded-full"
+              style={{ width: `${Math.min(100, (prog.totalProcessed / prog.totalCount) * 100)}%` }}
+            />
+          </div>
+        )}
         {prog.lastId && (
           <div className="mt-1 text-xs text-gray-500 font-mono truncate">
             Last ID: {prog.lastId}

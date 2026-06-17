@@ -63,6 +63,45 @@ public class SalesforceService {
         return result;
     }
 
+    public long runCountQuery(String soql, String instanceUrl, String accessToken) throws Exception {
+        String urlStr = instanceUrl + "/services/data/" + API_VERSION + "/query?q="
+                + URLEncoder.encode(soql, StandardCharsets.UTF_8);
+        HttpURLConnection conn = openConnection(urlStr, "GET", accessToken);
+        conn.setConnectTimeout(10000);
+        conn.setReadTimeout(15000);
+
+        int code = conn.getResponseCode();
+        String body = readAll(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
+        conn.disconnect();
+
+        if (code < 200 || code >= 300) {
+            throw new RuntimeException("Count query failed (HTTP " + code + "): " + body);
+        }
+        return objectMapper.readTree(body).path("totalSize").asLong(0);
+    }
+
+    public long getRecordCount(String objectType, String instanceUrl, String accessToken) throws Exception {
+        String urlStr = instanceUrl + "/services/data/" + API_VERSION + "/limits/recordCount?sObjects="
+                + URLEncoder.encode(objectType, StandardCharsets.UTF_8);
+        HttpURLConnection conn = openConnection(urlStr, "GET", accessToken);
+        conn.setConnectTimeout(10000);
+        conn.setReadTimeout(10000);
+
+        int code = conn.getResponseCode();
+        String body = readAll(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
+        conn.disconnect();
+
+        if (code < 200 || code >= 300) {
+            throw new RuntimeException("Salesforce recordCount failed (HTTP " + code + "): " + body);
+        }
+
+        JsonNode sObjects = objectMapper.readTree(body).path("sObjects");
+        if (sObjects.isArray() && sObjects.size() > 0) {
+            return sObjects.get(0).path("count").asLong(0);
+        }
+        return 0;
+    }
+
     public HttpURLConnection openConnection(String urlStr, String method, String accessToken) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) URI.create(urlStr).toURL().openConnection();
         conn.setRequestMethod(method);

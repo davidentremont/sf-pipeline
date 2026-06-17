@@ -17,6 +17,17 @@ const STATUS_TEXT = {
 
 export default function WorkerMonitor({ workers, progress }) {
   const runningCount = workers.length
+  const { processed, batch, totalCount } = progress
+
+  const pct = totalCount > 0
+    ? Math.min(100, (processed / totalCount) * 100)
+    : null
+
+  const statsLabel = totalCount > 0
+    ? `${processed.toLocaleString()} / ${totalCount.toLocaleString()} (${pct.toFixed(1)}%)`
+    : processed > 0
+      ? `${processed.toLocaleString()} records`
+      : null
 
   return (
     <div className="card">
@@ -26,17 +37,34 @@ export default function WorkerMonitor({ workers, progress }) {
           {runningCount > 0 && (
             <span className="text-green-600">{runningCount} running</span>
           )}
-          {progress.batch > 0 && (
-            <span>Batch {progress.batch} · {progress.processed.toLocaleString()} records</span>
+          {batch > 0 && (
+            <span>Batch {batch}</span>
+          )}
+          {statsLabel && (
+            <span className="font-medium text-gray-700">{statsLabel}</span>
           )}
         </div>
       </div>
 
-      {progress.processed > 0 && (
-        <div className="px-4 pt-3">
-          <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
-            <div className="h-full bg-sf-blue rounded-full transition-all duration-500 w-full" />
+      {processed > 0 && (
+        <div className="px-4 pt-3 space-y-1">
+          <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+            {pct != null ? (
+              <div
+                className="h-full bg-sf-blue rounded-full transition-all duration-500"
+                style={{ width: `${pct}%` }}
+              />
+            ) : (
+              // Indeterminate stripe when no total is known
+              <div className="h-full bg-sf-blue rounded-full opacity-40 w-full" />
+            )}
           </div>
+          {pct != null && (
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>{processed.toLocaleString()} processed</span>
+              <span>{(totalCount - processed).toLocaleString()} remaining</span>
+            </div>
+          )}
         </div>
       )}
 

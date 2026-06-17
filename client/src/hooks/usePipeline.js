@@ -6,7 +6,7 @@ const INITIAL = {
   connected: false,
   status: 'idle',
   workers: [],
-  progress: { processed: 0, batch: 0 },
+  progress: { processed: 0, batch: 0, totalCount: 0 },
   events: [],
   error: null,
   currentQuery: null,
@@ -30,8 +30,13 @@ function reducer(state, action) {
         ...addEvent(`Pipeline started — job: ${action.job}, instance: ${action.instanceUrl}, batch: ${action.batchSize}, threads: ${action.threads}`),
         status: 'running',
         workers: [],
-        progress: { processed: 0, batch: 0 },
+        progress: { processed: 0, batch: 0, totalCount: 0 },
         error: null,
+      }
+    case 'TOTAL_COUNT':
+      return {
+        ...addEvent(`${action.objectType}: ${action.totalCount.toLocaleString()} total records`),
+        progress: { ...state.progress, totalCount: action.totalCount },
       }
     case 'QUERYING':
       return {

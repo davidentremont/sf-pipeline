@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -78,6 +80,18 @@ public class PipelineEngine {
                 .with("plugins", job.getPlugins())
                 .with("resumeFromId", config.getResumeFromId())
                 .with("initialProcessed", config.getInitialProcessed()));
+
+        // Fetch total record count for progress tracking (non-fatal if it fails)
+        String objectType = extractObjectType(job.getQuery());
+        if (objectType != null) {
+            long totalCount = fetchTotalCount(job.getQuery(), objectType, instanceUrl, accessToken);
+            if (totalCount > 0) {
+                emit(new PipelineEvent("TOTAL_COUNT")
+                        .with("objectType", objectType)
+                        .with("totalCount", totalCount));
+                progressService.setTotalCount(jobId, instanceUrl, totalCount);
+            }
+        }
 
         workerPool = Executors.newCachedThreadPool();
         AtomicInteger workerIdSeq = new AtomicInteger(0);
@@ -207,6 +221,44 @@ public class PipelineEngine {
         emit(new PipelineEvent("WORKER_DONE")
                 .with("workerId", workerId)
                 .with("count", records.size()));
+    }
+
+    private long fetchTotalCount(String queryTemplate, String objectType, String instanceUrl, String accessToken) {
+        String whereClause = extractWhereClause(queryTemplate);
+        if (whereClause == null) {
+            // No filter — limits/recordCount gives an exact total for the object
+            try {
+                return salesforceService.getRecordCount(objectType, instanceUrl, accessToken);
+            } catch (Exception e) {
+                return 0;
+            }
+        }
+        // Has WHERE clause — try SOQL COUNT() with a short timeout first
+        try {
+            String countSoql = "SELECT COUNT() FROM " + objectType + " WHERE " + whereClause;
+            return salesforceService.runCountQuery(countSoql, instanceUrl, accessToken);
+        } catch (Exception e) {
+            // Fall back to limits/recordCount (approximate for filtered queries)
+            try {
+                return salesforceService.getRecordCount(objectType, instanceUrl, accessToken);
+            } catch (Exception e2) {
+                return 0;
+            }
+        }
+    }
+
+    private static String extractObjectType(String query) {
+        if (query == null) return null;
+        Matcher m = Pattern.compile("\\bFROM\\s+(\\w+)", Pattern.CASE_INSENSITIVE).matcher(query);
+        return m.find() ? m.group(1) : null;
+    }
+
+    private static String extractWhereClause(String query) {
+        if (query == null) return null;
+        Matcher m = Pattern.compile(
+                "\\bWHERE\\b(.+?)(?:\\bORDER\\b|\\bLIMIT\\b|\\bGROUP\\b|\\bHAVING\\b|$)",
+                Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(query);
+        return m.find() ? m.group(1).trim() : null;
     }
 
     private static <T> List<List<T>> chunkList(List<T> list, int numChunks) {

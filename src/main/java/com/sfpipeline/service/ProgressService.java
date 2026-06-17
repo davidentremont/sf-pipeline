@@ -42,6 +42,10 @@ public class ProgressService {
                         PRIMARY KEY (job_id, instance_url)
                     )
                 """);
+                // Migration: add total_count if upgrading from an older schema
+                try {
+                    st.execute("ALTER TABLE pipeline_progress ADD COLUMN total_count INTEGER DEFAULT 0");
+                } catch (SQLException ignored) {}
             }
         } catch (Exception e) {
             System.err.println("ProgressService init failed: " + e.getMessage());
@@ -65,13 +69,14 @@ public class ProgressService {
     public synchronized void upsert(PipelineProgress p) {
         String sql = """
             INSERT INTO pipeline_progress
-                (job_id, instance_url, query, last_id, total_processed, batch_num, status, started_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (job_id, instance_url, query, last_id, total_processed, batch_num, total_count, status, started_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(job_id, instance_url) DO UPDATE SET
                 query           = excluded.query,
                 last_id         = excluded.last_id,
                 total_processed = excluded.total_processed,
                 batch_num       = excluded.batch_num,
+                total_count     = excluded.total_count,
                 status          = excluded.status,
                 started_at      = excluded.started_at,
                 updated_at      = excluded.updated_at
@@ -83,9 +88,10 @@ public class ProgressService {
             ps.setString(4, p.getLastId());
             ps.setLong(5, p.getTotalProcessed());
             ps.setInt(6, p.getBatchNum());
-            ps.setString(7, p.getStatus());
-            ps.setString(8, p.getStartedAt());
-            ps.setString(9, p.getUpdatedAt());
+            ps.setLong(7, p.getTotalCount());
+            ps.setString(8, p.getStatus());
+            ps.setString(9, p.getStartedAt());
+            ps.setString(10, p.getUpdatedAt());
             ps.executeUpdate();
         } catch (Exception e) {
             System.err.println("ProgressService.upsert failed: " + e.getMessage());
@@ -107,6 +113,22 @@ public class ProgressService {
             ps.executeUpdate();
         } catch (Exception e) {
             System.err.println("ProgressService.updateBatch failed: " + e.getMessage());
+        }
+    }
+
+    public synchronized void setTotalCount(String jobId, String instanceUrl, long totalCount) {
+        try (PreparedStatement ps = connection.prepareStatement("""
+                UPDATE pipeline_progress
+                SET total_count = ?, updated_at = ?
+                WHERE job_id = ? AND instance_url = ?
+            """)) {
+            ps.setLong(1, totalCount);
+            ps.setString(2, now());
+            ps.setString(3, jobId);
+            ps.setString(4, instanceUrl);
+            ps.executeUpdate();
+        } catch (Exception e) {
+            System.err.println("ProgressService.setTotalCount failed: " + e.getMessage());
         }
     }
 
@@ -147,6 +169,7 @@ public class ProgressService {
         p.setLastId(rs.getString("last_id"));
         p.setTotalProcessed(rs.getLong("total_processed"));
         p.setBatchNum(rs.getInt("batch_num"));
+        p.setTotalCount(rs.getLong("total_count"));
         p.setStatus(rs.getString("status"));
         p.setStartedAt(rs.getString("started_at"));
         p.setUpdatedAt(rs.getString("updated_at"));
