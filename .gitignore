@@ -1,5 +1,6 @@
 *.class
 *.war
+target/
 node_modules/
 client/dist/
 src/main/resources/static/
