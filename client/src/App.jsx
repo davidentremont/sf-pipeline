@@ -4,6 +4,7 @@ import { useJobs } from './hooks/useJobs.js'
 import { useProgress } from './hooks/useProgress.js'
 import WorkerMonitor from './components/WorkerMonitor.jsx'
 import EventLog from './components/EventLog.jsx'
+import ConnectionPanel from './components/ConnectionPanel.jsx'
 
 function StatusDot({ connected }) {
   return (
@@ -106,7 +107,6 @@ export default function App() {
 
   const [instanceUrl, setInstanceUrl]   = useState(() => localStorage.getItem('sf_instanceUrl') || '')
   const [accessToken, setAccessToken]   = useState(() => localStorage.getItem('sf_accessToken') || '')
-  const [showToken, setShowToken]       = useState(false)
   const [batchSize, setBatchSize]       = useState(1000)
   const [threads, setThreads]           = useState(5)
   const [params, setParams]             = useState({})
@@ -243,47 +243,19 @@ export default function App() {
           </div>
         </div>
 
-        {/* Credentials + Pipeline config */}
+        {/* Connection details */}
+        <ConnectionPanel
+          instanceUrl={instanceUrl}
+          setInstanceUrl={setInstanceUrl}
+          accessToken={accessToken}
+          setAccessToken={setAccessToken}
+          isRunning={isRunning}
+        />
+
+        {/* Pipeline config + controls */}
         <div className="card">
           <div className="card-header">Configuration &amp; Controls</div>
           <div className="p-4 space-y-3">
-
-            {/* Row 1: credentials */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div>
-                <label className="label">Instance URL</label>
-                <input
-                  className="input"
-                  type="text"
-                  value={instanceUrl}
-                  onChange={e => { setInstanceUrl(e.target.value); localStorage.setItem('sf_instanceUrl', e.target.value) }}
-                  placeholder="https://myorg.my.salesforce.com"
-                  disabled={isRunning}
-                  autoComplete="off"
-                />
-              </div>
-              <div>
-                <label className="label">Access Token</label>
-                <div className="relative">
-                  <input
-                    className="input pr-16"
-                    type={showToken ? 'text' : 'password'}
-                    value={accessToken}
-                    onChange={e => { setAccessToken(e.target.value); localStorage.setItem('sf_accessToken', e.target.value) }}
-                    placeholder="00D…"
-                    disabled={isRunning}
-                    autoComplete="off"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowToken(v => !v)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 px-1"
-                  >
-                    {showToken ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-              </div>
-            </div>
 
             {/* Runtime params (job-defined, dynamic) */}
             {(selectedJob?.runtimeParams || []).length > 0 && (
