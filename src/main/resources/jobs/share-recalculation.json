@@ -1,0 +1,20 @@
+{
+  "id": "share-calculation",
+  "name": "Share Calculation",
+  "version": "1.0",
+  "description": "Recalculates sharing for any object using the sobjectshares Apex REST endpoint",
+  "query": "SELECT Id FROM {objectType} ORDER BY Id ASC",
+  "plugins": ["ShareCalculatorPlugin"],
+  "defaultBatchSize": 10000,
+  "defaultThreads": 10,
+  "runtimeParams": [
+    {
+      "plugin": "ShareCalculatorPlugin",
+      "key": "objectType",
+      "label": "Object Type",
+      "type": "text",
+      "placeholder": "Case",
+      "required": true
+    }
+  ]
+}

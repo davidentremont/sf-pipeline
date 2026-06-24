@@ -1,0 +1,20 @@
+{
+  "id": "record-delete",
+  "name": "Record Delete",
+  "version": "1.0",
+  "description": "Bulk delete records from any SObject type using the Composite API",
+  "query": "SELECT Id FROM {objectType} ORDER BY Id ASC",
+  "plugins": ["CompositeDeletePlugin"],
+  "defaultBatchSize": 200,
+  "defaultThreads": 3,
+  "runtimeParams": [
+    {
+      "plugin": "CompositeDeletePlugin",
+      "key": "objectType",
+      "label": "SObject Query",
+      "type": "text",
+      "placeholder": "",
+      "required": true
+    }
+  ]
+}

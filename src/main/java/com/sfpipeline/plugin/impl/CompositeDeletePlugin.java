@@ -41,7 +41,9 @@ public class CompositeDeletePlugin implements Plugin {
     public List<Map<String, Object>> execute(List<Map<String, Object>> input, PluginContext context) throws Exception {
         if (input.isEmpty()) return input;
 
-        boolean allOrNone = allOrNone(context);
+        Map<String, Object> config = pluginConfig(context);
+        String objectType = (String) config.getOrDefault("objectType", "");
+        boolean allOrNone = Boolean.parseBoolean(config.getOrDefault("allOrNone", false).toString());
 
         List<String> ids = input.stream()
                 .map(r -> (String) r.get("Id"))
@@ -49,6 +51,9 @@ public class CompositeDeletePlugin implements Plugin {
                 .collect(Collectors.toList());
 
         if (ids.isEmpty()) return input;
+
+        context.log("CompositeDeletePlugin: objectType=" + (objectType.isBlank() ? "(from query)" : objectType)
+                + ", allOrNone=" + allOrNone + ", records=" + ids.size());
 
         int totalDeleted = 0;
         int totalFailed  = 0;
@@ -121,14 +126,10 @@ public class CompositeDeletePlugin implements Plugin {
         return new int[]{deleted, failed};
     }
 
-    private boolean allOrNone(PluginContext context) {
+    private Map<String, Object> pluginConfig(PluginContext context) {
         Map<String, Map<String, Object>> all = context.getJob().getPluginConfig();
-        if (all == null) return false;
-        Map<String, Object> cfg = all.get(getName());
-        if (cfg == null) return false;
-        Object val = cfg.get("allOrNone");
-        if (val == null) return false;
-        return Boolean.parseBoolean(val.toString());
+        if (all != null && all.containsKey(getName())) return all.get(getName());
+        return Collections.emptyMap();
     }
 
     private String readAll(InputStream is) throws Exception {
