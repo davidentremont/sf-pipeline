@@ -35,10 +35,19 @@ public class SfdxApexPlugin implements Plugin {
                 .map(r -> "'" + r.get("Id") + "'")
                 .collect(Collectors.toList());
 
-        String apex = String.format(
-                "List<Id> recordIds = new List<Id>{%s};\n" +
-                "System.debug('Worker %d processing ' + recordIds.size() + ' records');",
-                String.join(",", ids), context.getWorkerId());
+        String idsLiteral = String.join(",", ids);
+        String apexTemplate = context.getPluginParam("SfdxApexPlugin", "apexCode");
+        String apex;
+        if (apexTemplate != null && !apexTemplate.isBlank()) {
+            apex = apexTemplate
+                    .replace("{ids}", idsLiteral)
+                    .replace("{workerId}", String.valueOf(context.getWorkerId()));
+        } else {
+            apex = String.format(
+                    "List<Id> recordIds = new List<Id>{%s};\n" +
+                    "System.debug('Worker %d processing ' + recordIds.size() + ' records');",
+                    idsLiteral, context.getWorkerId());
+        }
 
         String urlStr = context.getInstanceUrl()
                 + "/services/data/" + SalesforceService.API_VERSION

@@ -261,22 +261,37 @@ export default function App() {
             {(selectedJob?.runtimeParams || []).length > 0 && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {(selectedJob.runtimeParams || []).map(rp => (
-                  <div key={`${rp.plugin}.${rp.key}`}>
+                  <div key={`${rp.plugin}.${rp.key}`} className={rp.type === 'textarea' ? 'lg:col-span-2' : ''}>
                     <label className="label">
                       {rp.label}
                       {rp.required && <span className="text-red-400 ml-0.5">*</span>}
                     </label>
-                    <input
-                      className="input"
-                      type={rp.type || 'text'}
-                      value={params[rp.plugin]?.[rp.key] || ''}
-                      onChange={e => setParams(prev => ({
-                        ...prev,
-                        [rp.plugin]: { ...prev[rp.plugin], [rp.key]: e.target.value }
-                      }))}
-                      placeholder={rp.placeholder || ''}
-                      disabled={isRunning}
-                    />
+                    {rp.type === 'textarea' ? (
+                      <textarea
+                        className="input font-mono text-xs resize-y"
+                        rows={8}
+                        value={params[rp.plugin]?.[rp.key] || ''}
+                        onChange={e => setParams(prev => ({
+                          ...prev,
+                          [rp.plugin]: { ...prev[rp.plugin], [rp.key]: e.target.value }
+                        }))}
+                        placeholder={rp.placeholder || ''}
+                        disabled={isRunning}
+                        spellCheck={false}
+                      />
+                    ) : (
+                      <input
+                        className="input"
+                        type={rp.type || 'text'}
+                        value={params[rp.plugin]?.[rp.key] || ''}
+                        onChange={e => setParams(prev => ({
+                          ...prev,
+                          [rp.plugin]: { ...prev[rp.plugin], [rp.key]: e.target.value }
+                        }))}
+                        placeholder={rp.placeholder || ''}
+                        disabled={isRunning}
+                      />
+                    )}
                   </div>
                 ))}
               </div>

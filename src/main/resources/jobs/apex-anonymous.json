@@ -1,0 +1,28 @@
+{
+  "id": "apex-anonymous",
+  "name": "Apex Anonymous",
+  "version": "1.0",
+  "description": "Runs a user-supplied anonymous Apex snippet against each batch of records. Use {ids} for the quoted ID list and {workerId} for the worker number.",
+  "query": "SELECT Id FROM {objectType} ORDER BY Id ASC",
+  "plugins": ["SfdxApexPlugin"],
+  "defaultBatchSize": 200,
+  "defaultThreads": 3,
+  "runtimeParams": [
+    {
+      "plugin": "SfdxApexPlugin",
+      "key": "objectType",
+      "label": "SObject Type",
+      "type": "text",
+      "placeholder": "Account",
+      "required": true
+    },
+    {
+      "plugin": "SfdxApexPlugin",
+      "key": "apexCode",
+      "label": "Apex Code",
+      "type": "textarea",
+      "placeholder": "List<Id> recordIds = new List<Id>{{ids}};\n// your logic here",
+      "required": true
+    }
+  ]
+}
