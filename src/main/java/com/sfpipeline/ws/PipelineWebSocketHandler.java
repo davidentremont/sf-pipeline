@@ -10,6 +10,7 @@ import com.sfpipeline.pipeline.PipelineEngine;
 import com.sfpipeline.service.JobService;
 import com.sfpipeline.service.ProgressService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -30,6 +31,9 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
     @Autowired private PipelineEngine pipelineEngine;
     @Autowired private JobService jobService;
     @Autowired private ProgressService progressService;
+
+    @Value("${pipeline.max-workers:0}")
+    private int maxWorkers;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Set<WebSocketSession> sessions = new CopyOnWriteArraySet<>();
@@ -64,6 +68,7 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
         String accessToken = msg.path("accessToken").asText();
         int batchSize      = msg.path("batchSize").asInt(1000);
         int threads        = msg.path("threads").asInt(5);
+        if (maxWorkers > 0 && threads > maxWorkers) threads = maxWorkers;
         boolean fresh      = msg.path("fresh").asBoolean(false);
 
         if (instanceUrl.isBlank()) {
