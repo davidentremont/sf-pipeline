@@ -31,7 +31,7 @@ function fmtDuration(startedAt, finishedAt) {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
 }
 
-function ResumeBar({ prog, onResume, onFresh, disabled }) {
+function ResumeBar({ prog, jobName, onResume, onFresh, disabled }) {
   if (!prog) return null
 
   const canResume = prog.lastId && prog.status !== 'completed'
@@ -45,7 +45,9 @@ function ResumeBar({ prog, onResume, onFresh, disabled }) {
           <span className={`text-xs font-medium px-2 py-0.5 rounded border ${badgeCls}`}>
             {prog.status}
           </span>
-          <span className="text-sm font-medium text-gray-700">Previous run</span>
+          <span className="text-sm font-medium text-gray-700">
+            Previous run{jobName ? ` · ${jobName}` : ''}
+          </span>
           <span className="text-xs text-gray-500">
             {prog.totalCount > 0
               ? `${prog.totalProcessed.toLocaleString()} / ${prog.totalCount.toLocaleString()} (${((prog.totalProcessed / prog.totalCount) * 100).toFixed(1)}%)`
@@ -142,14 +144,13 @@ export default function App() {
   const canStart = state.connected && selectedJob && instanceUrl.trim() && accessToken.trim() && runtimeParamsFilled && !isRunning
   const canStop  = state.status === 'running'
 
-  function handleStart(fresh = false) {
+  function handleStart(fresh = true) {
     if (!canStart) return
     const objectType = Object.values(params).flatMap(p => Object.values(p))[0] || selectedJob.id
-    const confirmed = window.confirm(`Start "${selectedJob.name}" on ${objectType}?`)
+    const action = fresh ? 'Start fresh' : 'Resume'
+    const confirmed = window.confirm(`${action} "${selectedJob.name}" on ${objectType}?`)
     if (confirmed) startPipeline(selectedJob.id, instanceUrl.trim(), accessToken.trim(), batchSize, threads, params, fresh)
   }
-
-  const hasResumable = savedProgress?.lastId && savedProgress?.status !== 'completed'
 
   const statusColor = {
     idle:      'text-gray-500',
@@ -304,6 +305,7 @@ export default function App() {
             {savedProgress && (
               <ResumeBar
                 prog={savedProgress}
+                jobName={selectedJob?.name}
                 onResume={() => handleStart(false)}
                 onFresh={() => handleStart(true)}
                 disabled={!canStart}
@@ -339,10 +341,10 @@ export default function App() {
               <div className="flex gap-2">
                 <button
                   className="btn-primary flex-1"
-                  onClick={() => handleStart(false)}
+                  onClick={() => handleStart(true)}
                   disabled={!canStart}
                 >
-                  {hasResumable ? '↩ Resume' : '▶ Start'}
+                  ▶ Start
                 </button>
                 <button className="btn-danger flex-1" onClick={stopPipeline} disabled={!canStop}>
                   ■ Stop
