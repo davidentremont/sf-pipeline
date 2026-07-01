@@ -84,7 +84,7 @@ public class ShareCalculatorPlugin implements Plugin {
 
         HttpURLConnection conn = openConnection(urlStr, "GET", accessToken);
         conn.setConnectTimeout(20000);
-        conn.setReadTimeout(20000);
+        conn.setReadTimeout(300000);
 
         int code = conn.getResponseCode();
         if (code < 200 || code >= 300) {
@@ -119,7 +119,7 @@ public class ShareCalculatorPlugin implements Plugin {
         String urlStr = instanceUrl + "/services/data/" + API_VERSION + "/composite/sobjects?allOrNone=false";
         HttpURLConnection conn = openConnection(urlStr, "POST", accessToken);
         conn.setConnectTimeout(20000);
-        conn.setReadTimeout(20000);
+        conn.setReadTimeout(300000);
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
 
