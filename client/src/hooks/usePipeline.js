@@ -76,7 +76,10 @@ function reducer(state, action) {
     case 'WORKER_DONE':
       return {
         ...state,
-        workers: state.workers.filter(w => w.id !== action.workerId)
+        workers: state.workers.filter(w => w.id !== action.workerId),
+        ...(action.totalProcessed != null
+          ? { progress: { ...state.progress, processed: action.totalProcessed } }
+          : {}),
       }
     case 'WORKER_ERROR':
       return {

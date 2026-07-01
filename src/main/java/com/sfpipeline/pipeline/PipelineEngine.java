@@ -148,10 +148,8 @@ public class PipelineEngine {
                 for (int i = 0; i < actualWorkers; i++) {
                     final int workerId = workerIds.get(i);
                     final List<Map<String, Object>> chunk = chunks.get(i);
-                    allFutures.add(CompletableFuture.runAsync(() -> {
-                        runWorker(workerId, chunk, plugins, config);
-                        totalProcessed.addAndGet(chunk.size());
-                    }, workerPool));
+                    allFutures.add(CompletableFuture.runAsync(() ->
+                        runWorker(workerId, chunk, plugins, config), workerPool));
                 }
 
                 // Prune completed futures so captured record data can be GC'd.
@@ -170,6 +168,9 @@ public class PipelineEngine {
                     CompletableFuture.allOf(allFutures.toArray(new CompletableFuture[0])).join();
                 } catch (CompletionException | CancellationException ignored) {}
             }
+
+            // Persist final count now that all workers have completed.
+            progressService.updateBatch(jobId, instanceUrl, lastId, totalProcessed.get(), batchNum);
 
             if (completedNormally) {
                 emit(new PipelineEvent("COMPLETE")
@@ -218,9 +219,11 @@ public class PipelineEngine {
             }
         }
 
+        long updated = totalProcessed.addAndGet(records.size());
         emit(new PipelineEvent("WORKER_DONE")
                 .with("workerId", workerId)
-                .with("count", records.size()));
+                .with("count", records.size())
+                .with("totalProcessed", updated));
     }
 
     private long fetchTotalCount(String queryTemplate, String objectType, String instanceUrl, String accessToken) {
