@@ -1,17 +1,25 @@
 package com.sfpipeline.plugin.impl;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Component;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sfpipeline.plugin.Plugin;
 import com.sfpipeline.plugin.PluginContext;
-import org.springframework.stereotype.Component;
-
-import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
-import java.util.stream.Collectors;
 
 @Component
 public class ShareCalculatorPlugin implements Plugin {
@@ -29,7 +37,7 @@ public class ShareCalculatorPlugin implements Plugin {
 
     @Override
     public String getDescription() {
-        return "Recalculates Salesforce sharing via sobjectshares Apex REST endpoint and inserts resulting share records";
+        return "Recalculates Salesforce sharing via sobjectshares Apex REST endpoint and inserts resulting share records. Requires class access to GS_A";
     }
 
     @Override

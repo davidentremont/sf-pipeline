@@ -143,7 +143,10 @@ export default function App() {
   const canStop  = state.status === 'running'
 
   function handleStart(fresh = false) {
-    if (canStart) startPipeline(selectedJob.id, instanceUrl.trim(), accessToken.trim(), batchSize, threads, params, fresh)
+    if (!canStart) return
+    const objectType = Object.values(params).flatMap(p => Object.values(p))[0] || selectedJob.id
+    const confirmed = window.confirm(`Start "${selectedJob.name}" on ${objectType}?`)
+    if (confirmed) startPipeline(selectedJob.id, instanceUrl.trim(), accessToken.trim(), batchSize, threads, params, fresh)
   }
 
   const hasResumable = savedProgress?.lastId && savedProgress?.status !== 'completed'
@@ -362,7 +365,7 @@ export default function App() {
       </main>
 
       <footer className="text-center text-xs text-gray-400 py-3 border-t border-sf-border">
-        SF Async Data Pipeline · Spring Boot + React · Salesforce REST API
+        SF Async Data Pipeline
       </footer>
     </div>
   )

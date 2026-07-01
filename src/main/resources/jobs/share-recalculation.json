@@ -11,9 +11,9 @@
     {
       "plugin": "ShareCalculatorPlugin",
       "key": "objectType",
-      "label": "Object Type",
+      "label": "SObject Query",
       "type": "text",
-      "placeholder": "Case",
+      "placeholder": "Case WHERE Status__c = 'Active'",
       "required": true
     }
   ]
