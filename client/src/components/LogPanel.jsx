@@ -97,7 +97,7 @@ export default function LogPanel({
   }
 
   return (
-    <div className="card flex flex-col" style={{ minHeight: '28rem' }}>
+    <div className="card flex flex-col" style={{ height: '32rem' }}>
       {/* Tab bar */}
       <div className="flex items-center border-b border-sf-border bg-gray-50 rounded-t-lg px-3 gap-0.5 shrink-0">
         <button type="button" onClick={() => setTab('workers')} className={tabCls('workers', 'green')}>

@@ -109,12 +109,23 @@ public class SfCliService {
         ProcessBuilder pb = new ProcessBuilder(command);
         Process process = pb.start();
 
-        // Capture stdout only — stderr carries CLI update warnings that corrupt JSON
+        // Capture stdout only — stderr carries CLI update warnings that corrupt JSON.
+        // Force UTF-8 so Windows CP1252 doesn't corrupt the JSON output.
         String output;
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
             output = reader.lines().collect(Collectors.joining("\n"));
         }
-        process.waitFor();
+        int exitCode = process.waitFor();
+        if (output.isBlank() && exitCode != 0) {
+            // Drain stderr for a useful error message when stdout was empty
+            String err;
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getErrorStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                err = reader.lines().collect(Collectors.joining("\n"));
+            }
+            throw new RuntimeException(cli + " exited " + exitCode + (err.isBlank() ? "" : ": " + err.trim()));
+        }
         return output;
     }
 
