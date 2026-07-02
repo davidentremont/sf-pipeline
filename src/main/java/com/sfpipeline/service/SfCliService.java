@@ -84,13 +84,29 @@ public class SfCliService {
         }
     }
 
-    private String run(String cli, String... args) throws Exception {
-        // Build a shell command string so the login shell resolves PATH
-        // (e.g. Homebrew at /opt/homebrew/bin is not in the JVM's default PATH on macOS)
-        StringBuilder cmd = new StringBuilder(shellQuote(cli));
-        for (String arg : args) cmd.append(' ').append(shellQuote(arg));
+    private static final boolean IS_WINDOWS =
+            System.getProperty("os.name", "").toLowerCase().contains("win");
 
-        ProcessBuilder pb = new ProcessBuilder("/bin/bash", "-l", "-c", cmd.toString());
+    private String run(String cli, String... args) throws Exception {
+        List<String> command = new ArrayList<>();
+        if (IS_WINDOWS) {
+            // On Windows, wrap in cmd.exe so PATH (including %APPDATA%\npm) is resolved
+            StringBuilder cmd = new StringBuilder(quoteWin(cli));
+            for (String arg : args) cmd.append(' ').append(quoteWin(arg));
+            command.add("cmd.exe");
+            command.add("/c");
+            command.add(cmd.toString());
+        } else {
+            // On macOS/Linux, use a login bash so Homebrew/nvm paths are on PATH
+            StringBuilder cmd = new StringBuilder(shellQuote(cli));
+            for (String arg : args) cmd.append(' ').append(shellQuote(arg));
+            command.add("/bin/bash");
+            command.add("-l");
+            command.add("-c");
+            command.add(cmd.toString());
+        }
+
+        ProcessBuilder pb = new ProcessBuilder(command);
         Process process = pb.start();
 
         // Capture stdout only — stderr carries CLI update warnings that corrupt JSON
@@ -104,5 +120,10 @@ public class SfCliService {
 
     private static String shellQuote(String s) {
         return "'" + s.replace("'", "'\\''") + "'";
+    }
+
+    private static String quoteWin(String s) {
+        // Wrap in double-quotes and escape internal double-quotes for cmd.exe
+        return "\"" + s.replace("\"", "\\\"") + "\"";
     }
 }
