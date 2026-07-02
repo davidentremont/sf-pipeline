@@ -199,7 +199,8 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // Merge runtime params
+        // Merge runtime params and apply query token substitution (same as handleStart)
+        Map<String, String> queryTokens = new HashMap<>();
         JsonNode params = msg.path("params");
         if (params.isObject()) {
             Map<String, Map<String, Object>> pluginConfig = job.getPluginConfig();
@@ -208,9 +209,19 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
             while (plugins.hasNext()) {
                 Map.Entry<String, JsonNode> entry = plugins.next();
                 Map<String, Object> cfg = pluginConfig.computeIfAbsent(entry.getKey(), k -> new HashMap<>());
-                entry.getValue().fields().forEachRemaining(f -> cfg.put(f.getKey(), f.getValue().asText()));
+                entry.getValue().fields().forEachRemaining(f -> {
+                    cfg.put(f.getKey(), f.getValue().asText());
+                    queryTokens.put(f.getKey(), f.getValue().asText());
+                });
             }
             job.setPluginConfig(pluginConfig);
+        }
+        if (!queryTokens.isEmpty() && job.getQuery() != null) {
+            String query = job.getQuery();
+            for (Map.Entry<String, String> token : queryTokens.entrySet()) {
+                query = query.replace("{" + token.getKey() + "}", token.getValue());
+            }
+            job.setQuery(query);
         }
 
         // Clear the errors we're about to retry so new failures are fresh

@@ -4,10 +4,8 @@ import { useJobs } from './hooks/useJobs.js'
 import { useProgress } from './hooks/useProgress.js'
 import { useErrors } from './hooks/useErrors.js'
 import { useOrgConnection } from './hooks/useOrgConnection.js'
-import WorkerMonitor from './components/WorkerMonitor.jsx'
-import EventLog from './components/EventLog.jsx'
+import LogPanel from './components/LogPanel.jsx'
 import ConnectionPanel from './components/ConnectionPanel.jsx'
-import ErrorPanel from './components/ErrorPanel.jsx'
 
 function StatusDot({ connected }) {
   return (
@@ -137,14 +135,18 @@ export default function App() {
 
   function handleSetInstanceUrl(v) { setInstanceUrl(v); clearOrgStatus() }
   function handleSetAccessToken(v) { setAccessToken(v); clearOrgStatus() }
-  const [batchSize, setBatchSize]       = useState(1000)
-  const [threads, setThreads]           = useState(5)
-  const [params, setParams]             = useState({})
+  const [recordsPerWorker, setRecordsPerWorker] = useState(200)
+  const [threads, setThreads]                   = useState(5)
+  const [params, setParams]                     = useState({})
+
+  const batchSize = threads * recordsPerWorker
 
   useEffect(() => {
     if (selectedJob) {
-      setBatchSize(selectedJob.defaultBatchSize || 1000)
-      setThreads(selectedJob.defaultThreads || 5)
+      const defaultThreads = selectedJob.defaultThreads || 5
+      const defaultBatch   = selectedJob.defaultBatchSize || 1000
+      setThreads(defaultThreads)
+      setRecordsPerWorker(Math.round(defaultBatch / defaultThreads))
       const initial = {}
       for (const rp of (selectedJob.runtimeParams || [])) {
         if (!initial[rp.plugin]) initial[rp.plugin] = {}
@@ -204,6 +206,13 @@ export default function App() {
         <span className="text-xl font-bold tracking-tight">SF Async Data Pipeline</span>
         <div className="flex items-center gap-4">
           <span className={`text-sm capitalize ${statusColor[state.status]}`}>{state.status}</span>
+          {isRunning && state.progress.processed > 0 && (
+            <span className="text-xs font-mono text-gray-300">
+              {state.progress.processed.toLocaleString()}
+              {state.progress.totalCount > 0 && ` / ${state.progress.totalCount.toLocaleString()}`}
+              {' rec'}
+            </span>
+          )}
           <OrgDot orgStatus={orgStatus} />
           <StatusDot connected={state.connected} />
         </div>
@@ -302,132 +311,143 @@ export default function App() {
           onVerify={verify}
         />
 
-        {/* Pipeline config + controls */}
-        <div className="card">
-          <div className="card-header">Configuration &amp; Controls</div>
-          <div className="p-4 space-y-3">
+        {/* Bottom row: controls (left) + monitoring/logs (right) */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
 
-            {/* Runtime params (job-defined, dynamic) */}
-            {(selectedJob?.runtimeParams || []).length > 0 && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {(selectedJob.runtimeParams || []).map(rp => (
-                  <div key={`${rp.plugin}.${rp.key}`} className={rp.type === 'textarea' ? 'lg:col-span-2' : ''}>
-                    <label className="label">
-                      {rp.label}
-                      {rp.required && <span className="text-red-400 ml-0.5">*</span>}
-                    </label>
-                    {rp.type === 'textarea' ? (
-                      <textarea
-                        className="input font-mono text-xs resize-y"
-                        rows={8}
-                        value={params[rp.plugin]?.[rp.key] || ''}
-                        onChange={e => setParams(prev => ({
-                          ...prev,
-                          [rp.plugin]: { ...prev[rp.plugin], [rp.key]: e.target.value }
-                        }))}
-                        placeholder={rp.placeholder || ''}
-                        disabled={isRunning}
-                        spellCheck={false}
-                      />
-                    ) : (
-                      <input
-                        className="input"
-                        type={rp.type || 'text'}
-                        value={params[rp.plugin]?.[rp.key] || ''}
-                        onChange={e => setParams(prev => ({
-                          ...prev,
-                          [rp.plugin]: { ...prev[rp.plugin], [rp.key]: e.target.value }
-                        }))}
-                        placeholder={rp.placeholder || ''}
-                        disabled={isRunning}
-                      />
-                    )}
+          {/* Left: Configuration & Controls */}
+          <div className="lg:col-span-2">
+            <div className="card">
+              <div className="card-header">Configuration &amp; Controls</div>
+              <div className="p-4 space-y-3">
+
+                {(selectedJob?.runtimeParams || []).length > 0 && (
+                  <div className="grid grid-cols-1 gap-4">
+                    {(selectedJob.runtimeParams || []).map(rp => (
+                      <div key={`${rp.plugin}.${rp.key}`}>
+                        <label className="label">
+                          {rp.label}
+                          {rp.required && <span className="text-red-400 ml-0.5">*</span>}
+                        </label>
+                        {rp.type === 'textarea' ? (
+                          <textarea
+                            className="input font-mono text-xs resize-y"
+                            rows={8}
+                            value={params[rp.plugin]?.[rp.key] || ''}
+                            onChange={e => setParams(prev => ({
+                              ...prev,
+                              [rp.plugin]: { ...prev[rp.plugin], [rp.key]: e.target.value }
+                            }))}
+                            placeholder={rp.placeholder || ''}
+                            disabled={isRunning}
+                            spellCheck={false}
+                          />
+                        ) : (
+                          <input
+                            className="input"
+                            type={rp.type || 'text'}
+                            value={params[rp.plugin]?.[rp.key] || ''}
+                            onChange={e => setParams(prev => ({
+                              ...prev,
+                              [rp.plugin]: { ...prev[rp.plugin], [rp.key]: e.target.value }
+                            }))}
+                            placeholder={rp.placeholder || ''}
+                            disabled={isRunning}
+                          />
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
+                )}
 
-            {/* Previous run / resume banner */}
-            {savedProgress && (
-              <ResumeBar
-                prog={savedProgress}
-                jobName={selectedJob?.name}
-                onResume={() => handleStart(false)}
-                onFresh={() => handleStart(true)}
-                disabled={!canStart}
-              />
-            )}
+                {savedProgress && (
+                  <ResumeBar
+                    prog={savedProgress}
+                    jobName={selectedJob?.name}
+                    onResume={() => handleStart(false)}
+                    onFresh={() => handleStart(true)}
+                    disabled={!canStart}
+                  />
+                )}
 
-            {/* Row 2: pipeline params + controls */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-              <div>
-                <label className="label">Page Size (records per batch)</label>
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={50000}
-                  value={batchSize}
-                  onChange={e => setBatchSize(Number(e.target.value))}
-                  disabled={isRunning}
-                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Worker Threads</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={threads}
+                      onChange={e => setThreads(Number(e.target.value))}
+                      disabled={isRunning}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Records per Worker</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min={1}
+                      max={2000}
+                      value={recordsPerWorker}
+                      onChange={e => setRecordsPerWorker(Number(e.target.value))}
+                      disabled={isRunning}
+                    />
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500">
+                  Query limit: <span className="font-mono font-medium text-gray-700">{batchSize.toLocaleString()}</span> records per batch ({threads} × {recordsPerWorker.toLocaleString()})
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    className="btn-primary flex-1"
+                    onClick={() => handleStart(true)}
+                    disabled={!canStart}
+                  >
+                    ▶ Start
+                  </button>
+                  <button className="btn-danger flex-1" onClick={stopPipeline} disabled={!canStop}>
+                    ■ Stop
+                  </button>
+                </div>
+
               </div>
-              <div>
-                <label className="label">Worker Threads</label>
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={threads}
-                  onChange={e => setThreads(Number(e.target.value))}
-                  disabled={isRunning}
-                />
-              </div>
-              <div className="flex gap-2">
-                <button
-                  className="btn-primary flex-1"
-                  onClick={() => handleStart(true)}
-                  disabled={!canStart}
-                >
-                  ▶ Start
-                </button>
-                <button className="btn-danger flex-1" onClick={stopPipeline} disabled={!canStop}>
-                  ■ Stop
-                </button>
-              </div>
+
+              {state.error && (
+                <div className="mx-4 mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
+                  {state.error}
+                </div>
+              )}
             </div>
-
           </div>
 
-          {state.error && (
-            <div className="mx-4 mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
-              {state.error}
-            </div>
-          )}
+          {/* Right: Workers / Events / Errors */}
+          <div className="lg:col-span-3">
+            <LogPanel
+              events={state.events}
+              errors={isRunning ? state.recordErrors : errors}
+              errorsLoading={errorsLoading}
+              disabled={isRunning}
+              workers={state.workers}
+              progress={state.progress}
+              isRunning={isRunning}
+              onRetry={() => {
+                if (!selectedJob || !instanceUrl.trim() || !accessToken.trim()) return
+                if (window.confirm(`Retry ${errors.length} failed record(s) for "${selectedJob.name}"?`)) {
+                  retryErrors(selectedJob.id, instanceUrl.trim(), accessToken.trim(), threads, params)
+                }
+              }}
+              onClear={() => {
+                if (selectedJob && instanceUrl.trim()) clearErrors(selectedJob.id, instanceUrl.trim())
+              }}
+              onRefresh={() => {
+                if (selectedJob && instanceUrl.trim()) fetchErrors(selectedJob.id, instanceUrl.trim())
+              }}
+            />
+          </div>
+
         </div>
-
-        <WorkerMonitor workers={state.workers} progress={state.progress} />
-
-        <ErrorPanel
-          errors={isRunning ? state.recordErrors : errors}
-          loading={errorsLoading}
-          disabled={isRunning}
-          onRetry={() => {
-            if (!selectedJob || !instanceUrl.trim() || !accessToken.trim()) return
-            if (window.confirm(`Retry ${errors.length} failed record(s) for "${selectedJob.name}"?`)) {
-              retryErrors(selectedJob.id, instanceUrl.trim(), accessToken.trim(), threads, params)
-            }
-          }}
-          onClear={() => {
-            if (selectedJob && instanceUrl.trim()) clearErrors(selectedJob.id, instanceUrl.trim())
-          }}
-          onRefresh={() => {
-            if (selectedJob && instanceUrl.trim()) fetchErrors(selectedJob.id, instanceUrl.trim())
-          }}
-        />
-
-        <EventLog events={state.events} />
 
       </main>
 

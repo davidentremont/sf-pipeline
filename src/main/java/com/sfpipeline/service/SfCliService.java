@@ -9,6 +9,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -21,33 +22,44 @@ public class SfCliService {
     public List<SfOrg> listOrgs() throws Exception {
         String output = runSf("org", "list", "--json");
         JsonNode root = objectMapper.readTree(output);
-        List<SfOrg> orgs = new ArrayList<>();
+        JsonNode result = root.path("result");
 
-        for (String key : new String[]{"nonScratchOrgs", "scratchOrgs"}) {
-            JsonNode arr = root.path("result").path(key);
-            if (!arr.isArray()) continue;
+        // Use LinkedHashMap keyed by username to deduplicate across CLI category keys
+        LinkedHashMap<String, SfOrg> seen = new LinkedHashMap<>();
+
+        result.fields().forEachRemaining(entry -> {
+            JsonNode arr = entry.getValue();
+            if (!arr.isArray()) return;
             for (JsonNode n : arr) {
+                String username = n.path("username").asText("");
+                if (username.isBlank() || seen.containsKey(username)) return;
                 SfOrg org = new SfOrg();
                 org.setAlias(n.path("alias").asText(""));
-                org.setUsername(n.path("username").asText(""));
+                org.setUsername(username);
                 org.setInstanceUrl(n.path("instanceUrl").asText(""));
                 org.setConnectedStatus(n.path("connectedStatus").asText("Unknown"));
-                org.setDefaultUsername(n.path("isDefaultUsername").asBoolean(false));
-                if (!org.getUsername().isBlank()) orgs.add(org);
+                org.setDefaultUsername(n.path("isDefaultUsername").asBoolean(false)
+                        || n.path("isDefaultDevHubUsername").asBoolean(false));
+                seen.put(username, org);
             }
-        }
-        return orgs;
+        });
+        return new ArrayList<>(seen.values());
     }
 
     public Map<String, String> displayOrg(String aliasOrUsername) throws Exception {
-        String output = runSf("org", "display", "--target-org", aliasOrUsername, "--json");
-        JsonNode result = objectMapper.readTree(output).path("result");
+        // sf org display gives metadata; access token is separate in SF CLI v2
+        String displayOut = runSf("org", "display", "--target-org", aliasOrUsername, "--json");
+        JsonNode display = objectMapper.readTree(displayOut).path("result");
+
+        String tokenOut = runSf("org", "auth", "show-access-token", "--target-org", aliasOrUsername, "--json");
+        JsonNode tokenResult = objectMapper.readTree(tokenOut).path("result");
 
         Map<String, String> info = new HashMap<>();
-        info.put("instanceUrl", result.path("instanceUrl").asText(""));
-        info.put("accessToken", result.path("accessToken").asText(""));
-        info.put("username", result.path("username").asText(""));
-        info.put("alias", result.path("alias").asText(""));
+        info.put("instanceUrl", display.path("instanceUrl").asText(""));
+        info.put("accessToken", tokenResult.path("accessToken").asText(
+                display.path("accessToken").asText("")));  // fallback for older CLI
+        info.put("username", display.path("username").asText(""));
+        info.put("alias", display.path("alias").asText(""));
         return info;
     }
 
@@ -65,27 +77,32 @@ public class SfCliService {
         try {
             return run("sf", args);
         } catch (Exception e) {
-            if (e.getMessage() != null && e.getMessage().contains("No such file")) {
+            try {
                 return run("sfdx", args);
-            }
+            } catch (Exception ignored) {}
             throw e;
         }
     }
 
     private String run(String cli, String... args) throws Exception {
-        String[] command = new String[args.length + 1];
-        command[0] = cli;
-        System.arraycopy(args, 0, command, 1, args.length);
+        // Build a shell command string so the login shell resolves PATH
+        // (e.g. Homebrew at /opt/homebrew/bin is not in the JVM's default PATH on macOS)
+        StringBuilder cmd = new StringBuilder(shellQuote(cli));
+        for (String arg : args) cmd.append(' ').append(shellQuote(arg));
 
-        ProcessBuilder pb = new ProcessBuilder(command);
-        pb.redirectErrorStream(true);
+        ProcessBuilder pb = new ProcessBuilder("/bin/bash", "-l", "-c", cmd.toString());
         Process process = pb.start();
 
+        // Capture stdout only — stderr carries CLI update warnings that corrupt JSON
         String output;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             output = reader.lines().collect(Collectors.joining("\n"));
         }
         process.waitFor();
         return output;
+    }
+
+    private static String shellQuote(String s) {
+        return "'" + s.replace("'", "'\\''") + "'";
     }
 }
