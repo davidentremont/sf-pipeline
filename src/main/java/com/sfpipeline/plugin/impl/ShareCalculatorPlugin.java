@@ -88,8 +88,11 @@ public class ShareCalculatorPlugin implements Plugin {
 
         int code = conn.getResponseCode();
         if (code < 200 || code >= 300) {
-            context.log("Warning: sobjectshares returned HTTP " + code + ": " + readAll(conn.getErrorStream()));
+            String errBody = readAll(conn.getErrorStream());
             conn.disconnect();
+            context.log("Warning: sobjectshares returned HTTP " + code + ": " + errBody);
+            String errMsg = "sobjectshares HTTP " + code + ": " + errBody;
+            for (String id : ids) context.recordError(id, errMsg);
             return 0;
         }
 

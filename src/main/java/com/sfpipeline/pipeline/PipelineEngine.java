@@ -6,6 +6,7 @@ import com.sfpipeline.model.PipelineEvent;
 import com.sfpipeline.plugin.Plugin;
 import com.sfpipeline.plugin.PluginContext;
 import com.sfpipeline.plugin.PluginRegistry;
+import com.sfpipeline.service.ErrorService;
 import com.sfpipeline.service.ProgressService;
 import com.sfpipeline.service.SalesforceService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 @Service
 public class PipelineEngine {
@@ -36,6 +38,9 @@ public class PipelineEngine {
 
     @Autowired
     private ProgressService progressService;
+
+    @Autowired
+    private ErrorService errorService;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicLong totalProcessed = new AtomicLong(0);
@@ -72,6 +77,9 @@ public class PipelineEngine {
 
         List<Plugin> plugins = pluginRegistry.getPlugins(job.getPlugins());
 
+        List<String> retryIds = config.getRetryIds();
+        boolean isRetry = retryIds != null && !retryIds.isEmpty();
+
         emit(new PipelineEvent("STARTED")
                 .with("job", job.getName())
                 .with("instanceUrl", instanceUrl)
@@ -79,112 +87,157 @@ public class PipelineEngine {
                 .with("threads", threads)
                 .with("plugins", job.getPlugins())
                 .with("resumeFromId", config.getResumeFromId())
-                .with("initialProcessed", config.getInitialProcessed()));
+                .with("initialProcessed", config.getInitialProcessed())
+                .with("retry", isRetry)
+                .with("retryCount", isRetry ? retryIds.size() : 0));
 
-        // Fetch total record count for progress tracking (non-fatal if it fails)
-        String objectType = extractObjectType(job.getQuery());
-        if (objectType != null) {
-            long totalCount = fetchTotalCount(job.getQuery(), objectType, instanceUrl, accessToken);
-            if (totalCount > 0) {
-                emit(new PipelineEvent("TOTAL_COUNT")
-                        .with("objectType", objectType)
-                        .with("totalCount", totalCount));
-                progressService.setTotalCount(jobId, instanceUrl, totalCount);
+        if (!isRetry) {
+            // Fetch total record count for progress tracking (non-fatal if it fails)
+            String objectType = extractObjectType(job.getQuery());
+            if (objectType != null) {
+                long totalCount = fetchTotalCount(job.getQuery(), objectType, instanceUrl, accessToken);
+                if (totalCount > 0) {
+                    emit(new PipelineEvent("TOTAL_COUNT")
+                            .with("objectType", objectType)
+                            .with("totalCount", totalCount));
+                    progressService.setTotalCount(jobId, instanceUrl, totalCount);
+                }
             }
         }
 
         workerPool = Executors.newCachedThreadPool();
         AtomicInteger workerIdSeq = new AtomicInteger(0);
         List<CompletableFuture<Void>> allFutures = new ArrayList<>();
-        String lastId = config.getResumeFromId();
-        int batchNum = 0;
         boolean completedNormally = false;
         boolean errorOccurred = false;
 
         try {
-            while (running.get()) {
-                batchNum++;
-                String query = queryEngine.buildQuery(job.getQuery(), lastId, batchSize);
+            if (isRetry) {
+                completedNormally = runRetry(retryIds, job, instanceUrl, accessToken, threads,
+                        plugins, config, workerIdSeq, allFutures);
+                if (!completedNormally) errorOccurred = true;
+            } else {
+                String lastId = config.getResumeFromId();
+                int batchNum = 0;
 
-                emit(new PipelineEvent("QUERYING")
-                        .with("batch", batchNum)
-                        .with("query", query));
+                while (running.get()) {
+                    batchNum++;
+                    String query = queryEngine.buildQuery(job.getQuery(), lastId, batchSize);
 
-                List<Map<String, Object>> records;
-                try {
-                    records = salesforceService.runQuery(query, instanceUrl, accessToken);
-                } catch (Exception e) {
-                    emit(new PipelineEvent("ERROR").with("message", "Query failed: " + e.getMessage()));
-                    errorOccurred = true;
-                    break;
+                    emit(new PipelineEvent("QUERYING")
+                            .with("batch", batchNum)
+                            .with("query", query));
+
+                    List<Map<String, Object>> records;
+                    try {
+                        records = salesforceService.runQuery(query, instanceUrl, accessToken);
+                    } catch (Exception e) {
+                        emit(new PipelineEvent("ERROR").with("message", "Query failed: " + e.getMessage()));
+                        errorOccurred = true;
+                        break;
+                    }
+
+                    if (records.isEmpty()) {
+                        completedNormally = true;
+                        break;
+                    }
+
+                    lastId = (String) records.get(records.size() - 1).get("Id");
+
+                    emit(new PipelineEvent("QUERY_COMPLETE")
+                            .with("batch", batchNum)
+                            .with("count", records.size())
+                            .with("firstId", records.get(0).get("Id"))
+                            .with("lastId", lastId));
+
+                    dispatchWorkers(records, threads, plugins, config, workerIdSeq, allFutures);
+
+                    emit(new PipelineEvent("BATCH_COMPLETE")
+                            .with("batch", batchNum)
+                            .with("totalProcessed", totalProcessed.get()));
+
+                    progressService.updateBatch(jobId, instanceUrl, lastId, totalProcessed.get(), batchNum);
                 }
 
-                if (records.isEmpty()) {
-                    completedNormally = true;
-                    break;
-                }
-
-                lastId = (String) records.get(records.size() - 1).get("Id");
-
-                emit(new PipelineEvent("QUERY_COMPLETE")
-                        .with("batch", batchNum)
-                        .with("count", records.size())
-                        .with("firstId", records.get(0).get("Id"))
-                        .with("lastId", lastId));
-
-                List<List<Map<String, Object>>> chunks = chunkList(records, threads);
-                int actualWorkers = chunks.size();
-
-                List<Map<String, Object>> workerInit = new ArrayList<>();
-                List<Integer> workerIds = new ArrayList<>();
-                for (int i = 0; i < actualWorkers; i++) {
-                    int wid = workerIdSeq.incrementAndGet();
-                    workerIds.add(wid);
-                    workerInit.add(Map.of("id", wid, "status", "waiting", "records", chunks.get(i).size()));
-                }
-                emit(new PipelineEvent("WORKERS_INIT").with("workers", workerInit));
-
-                // Dispatch workers fire-and-forget; continue to next batch query immediately.
-                for (int i = 0; i < actualWorkers; i++) {
-                    final int workerId = workerIds.get(i);
-                    final List<Map<String, Object>> chunk = chunks.get(i);
-                    allFutures.add(CompletableFuture.runAsync(() ->
-                        runWorker(workerId, chunk, plugins, config), workerPool));
-                }
-
-                // Prune completed futures so captured record data can be GC'd.
-                allFutures.removeIf(CompletableFuture::isDone);
-
-                emit(new PipelineEvent("BATCH_COMPLETE")
-                        .with("batch", batchNum)
-                        .with("totalProcessed", totalProcessed.get()));
-
+                // Wait for all in-flight workers across all batches before finishing.
+                awaitWorkers(allFutures);
                 progressService.updateBatch(jobId, instanceUrl, lastId, totalProcessed.get(), batchNum);
             }
-
-            // Wait for all in-flight workers across all batches before finishing.
-            if (!allFutures.isEmpty()) {
-                try {
-                    CompletableFuture.allOf(allFutures.toArray(new CompletableFuture[0])).join();
-                } catch (CompletionException | CancellationException ignored) {}
-            }
-
-            // Persist final count now that all workers have completed.
-            progressService.updateBatch(jobId, instanceUrl, lastId, totalProcessed.get(), batchNum);
 
             if (completedNormally) {
                 emit(new PipelineEvent("COMPLETE")
                         .with("totalProcessed", totalProcessed.get())
-                        .with("message", "All records processed"));
+                        .with("message", isRetry ? "Retry complete" : "All records processed"));
             }
 
         } finally {
             String finalStatus = completedNormally ? "completed" : (errorOccurred ? "error" : "stopped");
-            progressService.setStatus(jobId, instanceUrl, finalStatus, totalProcessed.get());
+            if (!isRetry) {
+                progressService.setStatus(jobId, instanceUrl, finalStatus, totalProcessed.get());
+            }
 
             running.set(false);
             workerPool.shutdown();
             emit(new PipelineEvent("STOPPED").with("totalProcessed", totalProcessed.get()));
+        }
+    }
+
+    private boolean runRetry(List<String> retryIds, Job job, String instanceUrl, String accessToken,
+                              int threads, List<Plugin> plugins, PipelineConfig config,
+                              AtomicInteger workerIdSeq, List<CompletableFuture<Void>> allFutures) {
+        int chunkSize = 200;
+        List<Map<String, Object>> allRecords = new ArrayList<>();
+
+        for (int i = 0; i < retryIds.size(); i += chunkSize) {
+            List<String> idChunk = retryIds.subList(i, Math.min(i + chunkSize, retryIds.size()));
+            String query = buildIdInQuery(job.getQuery(), idChunk);
+            emit(new PipelineEvent("QUERYING").with("batch", (i / chunkSize) + 1).with("query", query));
+            try {
+                List<Map<String, Object>> records = salesforceService.runQuery(query, instanceUrl, accessToken);
+                allRecords.addAll(records);
+            } catch (Exception e) {
+                emit(new PipelineEvent("ERROR").with("message", "Retry query failed: " + e.getMessage()));
+                return false;
+            }
+        }
+
+        if (allRecords.isEmpty()) return true;
+
+        dispatchWorkers(allRecords, threads, plugins, config, workerIdSeq, allFutures);
+        awaitWorkers(allFutures);
+        return running.get();
+    }
+
+    private void dispatchWorkers(List<Map<String, Object>> records, int threads, List<Plugin> plugins,
+                                  PipelineConfig config, AtomicInteger workerIdSeq,
+                                  List<CompletableFuture<Void>> allFutures) {
+        List<List<Map<String, Object>>> chunks = chunkList(records, threads);
+        int actualWorkers = chunks.size();
+
+        List<Map<String, Object>> workerInit = new ArrayList<>();
+        List<Integer> workerIds = new ArrayList<>();
+        for (int i = 0; i < actualWorkers; i++) {
+            int wid = workerIdSeq.incrementAndGet();
+            workerIds.add(wid);
+            workerInit.add(Map.of("id", wid, "status", "waiting", "records", chunks.get(i).size()));
+        }
+        emit(new PipelineEvent("WORKERS_INIT").with("workers", workerInit));
+
+        for (int i = 0; i < actualWorkers; i++) {
+            final int workerId = workerIds.get(i);
+            final List<Map<String, Object>> chunk = chunks.get(i);
+            allFutures.add(CompletableFuture.runAsync(() ->
+                runWorker(workerId, chunk, plugins, config), workerPool));
+        }
+
+        allFutures.removeIf(CompletableFuture::isDone);
+    }
+
+    private void awaitWorkers(List<CompletableFuture<Void>> allFutures) {
+        if (!allFutures.isEmpty()) {
+            try {
+                CompletableFuture.allOf(allFutures.toArray(new CompletableFuture[0])).join();
+            } catch (CompletionException | CancellationException ignored) {}
         }
     }
 
@@ -207,7 +260,8 @@ public class PipelineEngine {
                     config.getJob(), salesforceService,
                     msg -> emit(new PipelineEvent("WORKER_LOG")
                             .with("workerId", workerId)
-                            .with("message", msg)));
+                            .with("message", msg)),
+                    errorService, plugin.getName());
             try {
                 data = plugin.execute(data, ctx);
             } catch (Exception e) {
@@ -226,22 +280,27 @@ public class PipelineEngine {
                 .with("totalProcessed", updated));
     }
 
+    private static String buildIdInQuery(String baseQuery, List<String> ids) {
+        Matcher m = Pattern.compile("^(SELECT\\s+.+?\\s+FROM\\s+\\w+)",
+                Pattern.CASE_INSENSITIVE | Pattern.DOTALL).matcher(baseQuery.trim());
+        if (!m.find()) throw new RuntimeException("Cannot parse query for retry: " + baseQuery);
+        String quoted = ids.stream().map(id -> "'" + id + "'").collect(Collectors.joining(","));
+        return m.group(1) + " WHERE Id IN (" + quoted + ")";
+    }
+
     private long fetchTotalCount(String queryTemplate, String objectType, String instanceUrl, String accessToken) {
         String whereClause = extractWhereClause(queryTemplate);
         if (whereClause == null) {
-            // No filter — limits/recordCount gives an exact total for the object
             try {
                 return salesforceService.getRecordCount(objectType, instanceUrl, accessToken);
             } catch (Exception e) {
                 return 0;
             }
         }
-        // Has WHERE clause — try SOQL COUNT() with a short timeout first
         try {
             String countSoql = "SELECT COUNT() FROM " + objectType + " WHERE " + whereClause;
             return salesforceService.runCountQuery(countSoql, instanceUrl, accessToken);
         } catch (Exception e) {
-            // Fall back to limits/recordCount (approximate for filtered queries)
             try {
                 return salesforceService.getRecordCount(objectType, instanceUrl, accessToken);
             } catch (Exception e2) {

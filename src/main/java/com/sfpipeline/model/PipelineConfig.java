@@ -8,6 +8,7 @@ public class PipelineConfig {
     private int threads;
     private String resumeFromId;
     private long initialProcessed;
+    private java.util.List<String> retryIds;
 
     public Job getJob() { return job; }
     public void setJob(Job job) { this.job = job; }
@@ -29,4 +30,7 @@ public class PipelineConfig {
 
     public long getInitialProcessed() { return initialProcessed; }
     public void setInitialProcessed(long initialProcessed) { this.initialProcessed = initialProcessed; }
+
+    public java.util.List<String> getRetryIds() { return retryIds; }
+    public void setRetryIds(java.util.List<String> retryIds) { this.retryIds = retryIds; }
 }

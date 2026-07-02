@@ -8,6 +8,7 @@ import com.sfpipeline.model.PipelineEvent;
 import com.sfpipeline.model.PipelineProgress;
 import com.sfpipeline.pipeline.PipelineEngine;
 import com.sfpipeline.service.JobService;
+import com.sfpipeline.service.ErrorService;
 import com.sfpipeline.service.ProgressService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,6 +21,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -31,6 +33,7 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
     @Autowired private PipelineEngine pipelineEngine;
     @Autowired private JobService jobService;
     @Autowired private ProgressService progressService;
+    @Autowired private ErrorService errorService;
 
     @Value("${pipeline.max-workers:0}")
     private int maxWorkers;
@@ -51,6 +54,7 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
         JsonNode msg = objectMapper.readTree(message.getPayload());
         switch (msg.path("type").asText()) {
             case "START" -> handleStart(session, msg);
+            case "RETRY" -> handleRetry(session, msg);
             case "STOP"  -> pipelineEngine.stop();
             default      -> send(session, new PipelineEvent("ERROR")
                     .with("message", "Unknown command: " + msg.path("type").asText()));
@@ -130,6 +134,11 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
             }
         }
 
+        // Clear stale errors when starting fresh
+        if (fresh) {
+            errorService.clearErrors(jobId, instanceUrl);
+        }
+
         // Upsert progress record for this run
         PipelineProgress progress = new PipelineProgress();
         progress.setJobId(jobId);
@@ -155,6 +164,65 @@ public class PipelineWebSocketHandler extends TextWebSocketHandler {
         config.setThreads(threads);
         config.setResumeFromId(resumeFromId);
         config.setInitialProcessed(initialProcessed);
+
+        pipelineEngine.start(config, this::broadcast);
+    }
+
+    private void handleRetry(WebSocketSession session, JsonNode msg) {
+        if (pipelineEngine.isRunning()) {
+            send(session, new PipelineEvent("ERROR").with("message", "Pipeline is already running"));
+            return;
+        }
+
+        String jobId       = msg.path("jobId").asText();
+        String instanceUrl = msg.path("instanceUrl").asText();
+        String accessToken = msg.path("accessToken").asText();
+        int threads        = msg.path("threads").asInt(5);
+        if (maxWorkers > 0 && threads > maxWorkers) threads = maxWorkers;
+
+        if (instanceUrl.isBlank() || accessToken.isBlank()) {
+            send(session, new PipelineEvent("ERROR").with("message", "Instance URL and access token are required for retry"));
+            return;
+        }
+
+        List<String> retryIds = errorService.getErrorRecordIds(jobId, instanceUrl);
+        if (retryIds.isEmpty()) {
+            send(session, new PipelineEvent("ERROR").with("message", "No failed records to retry"));
+            return;
+        }
+
+        Job job;
+        try {
+            job = jobService.getJobById(jobId);
+        } catch (Exception e) {
+            send(session, new PipelineEvent("ERROR").with("message", "Job not found: " + jobId));
+            return;
+        }
+
+        // Merge runtime params
+        JsonNode params = msg.path("params");
+        if (params.isObject()) {
+            Map<String, Map<String, Object>> pluginConfig = job.getPluginConfig();
+            if (pluginConfig == null) pluginConfig = new HashMap<>();
+            Iterator<Map.Entry<String, JsonNode>> plugins = params.fields();
+            while (plugins.hasNext()) {
+                Map.Entry<String, JsonNode> entry = plugins.next();
+                Map<String, Object> cfg = pluginConfig.computeIfAbsent(entry.getKey(), k -> new HashMap<>());
+                entry.getValue().fields().forEachRemaining(f -> cfg.put(f.getKey(), f.getValue().asText()));
+            }
+            job.setPluginConfig(pluginConfig);
+        }
+
+        // Clear the errors we're about to retry so new failures are fresh
+        errorService.clearErrors(jobId, instanceUrl);
+
+        PipelineConfig config = new PipelineConfig();
+        config.setJob(job);
+        config.setInstanceUrl(instanceUrl);
+        config.setAccessToken(accessToken);
+        config.setBatchSize(retryIds.size());
+        config.setThreads(threads);
+        config.setRetryIds(retryIds);
 
         pipelineEngine.start(config, this::broadcast);
     }

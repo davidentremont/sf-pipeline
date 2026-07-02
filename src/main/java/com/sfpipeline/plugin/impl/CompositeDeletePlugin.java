@@ -89,6 +89,8 @@ public class CompositeDeletePlugin implements Plugin {
             String err = readAll(conn.getErrorStream());
             conn.disconnect();
             context.log("Warning: composite delete returned HTTP " + code + ": " + err);
+            String errMsg = "composite delete HTTP " + code + ": " + err;
+            for (String id : ids) context.recordError(id, errMsg);
             return new int[]{0, ids.size()};
         }
 
@@ -104,23 +106,28 @@ public class CompositeDeletePlugin implements Plugin {
 
         int deleted = 0;
         int failed  = 0;
-        List<String> errors = new ArrayList<>();
+        List<String> logErrors = new ArrayList<>();
 
         for (JsonNode r : results) {
             if (r.path("success").asBoolean(false)) {
                 deleted++;
             } else {
                 failed++;
+                String recordId = r.path("id").asText("");
                 JsonNode errs = r.path("errors");
-                if (errs.isArray() && errs.size() > 0) {
-                    errors.add(r.path("id").asText("?") + ": " + errs.get(0).path("message").asText());
+                String errMsg = errs.isArray() && errs.size() > 0
+                        ? errs.get(0).path("message").asText("delete failed")
+                        : "delete failed";
+                if (!recordId.isBlank()) {
+                    context.recordError(recordId, errMsg);
+                    logErrors.add(recordId + ": " + errMsg);
                 }
             }
         }
 
-        if (!errors.isEmpty()) {
-            context.log("Delete errors: " + String.join("; ", errors.subList(0, Math.min(5, errors.size())))
-                    + (errors.size() > 5 ? " (+" + (errors.size() - 5) + " more)" : ""));
+        if (!logErrors.isEmpty()) {
+            context.log("Delete errors: " + String.join("; ", logErrors.subList(0, Math.min(5, logErrors.size())))
+                    + (logErrors.size() > 5 ? " (+" + (logErrors.size() - 5) + " more)" : ""));
         }
 
         return new int[]{deleted, failed};

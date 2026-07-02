@@ -161,7 +161,11 @@ export function usePipeline() {
     send({ type: 'START', jobId, instanceUrl, accessToken, batchSize: Number(batchSize), threads: Number(threads), params: params || {}, fresh: !!fresh })
   }, [send])
 
+  const retryErrors = useCallback((jobId, instanceUrl, accessToken, threads, params) => {
+    send({ type: 'RETRY', jobId, instanceUrl, accessToken, threads: Number(threads), params: params || {} })
+  }, [send])
+
   const stopPipeline = useCallback(() => send({ type: 'STOP' }), [send])
 
-  return { state, startPipeline, stopPipeline }
+  return { state, startPipeline, retryErrors, stopPipeline }
 }

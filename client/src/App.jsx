@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react'
 import { usePipeline } from './hooks/usePipeline.js'
 import { useJobs } from './hooks/useJobs.js'
 import { useProgress } from './hooks/useProgress.js'
+import { useErrors } from './hooks/useErrors.js'
 import WorkerMonitor from './components/WorkerMonitor.jsx'
 import EventLog from './components/EventLog.jsx'
 import ConnectionPanel from './components/ConnectionPanel.jsx'
+import ErrorPanel from './components/ErrorPanel.jsx'
 
 function StatusDot({ connected }) {
   return (
@@ -103,9 +105,10 @@ function ResumeBar({ prog, jobName, onResume, onFresh, disabled }) {
 }
 
 export default function App() {
-  const { state, startPipeline, stopPipeline } = usePipeline()
+  const { state, startPipeline, retryErrors, stopPipeline } = usePipeline()
   const { jobs, selectedJob, selectJob, loading: jobsLoading, reload: reloadJobs } = useJobs()
   const { progress: allProgress, refresh: refreshProgress } = useProgress()
+  const { errors, loading: errorsLoading, fetchErrors, clearErrors } = useErrors()
 
   const [instanceUrl, setInstanceUrl]   = useState(() => localStorage.getItem('sf_instanceUrl') || '')
   const [accessToken, setAccessToken]   = useState(() => localStorage.getItem('sf_accessToken') || '')
@@ -126,12 +129,22 @@ export default function App() {
     }
   }, [selectedJob?.id])
 
-  // Refresh progress from DB after each run finishes
+  // Refresh progress and errors from DB after each run finishes
   useEffect(() => {
     if (state.status === 'idle' || state.status === 'completed') {
       refreshProgress()
+      if (selectedJob && instanceUrl.trim()) {
+        fetchErrors(selectedJob.id, instanceUrl.trim())
+      }
     }
   }, [state.status])
+
+  // Reload errors when job or instance changes
+  useEffect(() => {
+    if (selectedJob && instanceUrl.trim()) {
+      fetchErrors(selectedJob.id, instanceUrl.trim())
+    }
+  }, [selectedJob?.id, instanceUrl])
 
   const savedProgress = selectedJob && instanceUrl.trim()
     ? allProgress.find(p => p.jobId === selectedJob.id && p.instanceUrl === instanceUrl.trim())
@@ -362,6 +375,25 @@ export default function App() {
         </div>
 
         <WorkerMonitor workers={state.workers} progress={state.progress} />
+
+        <ErrorPanel
+          errors={errors}
+          loading={errorsLoading}
+          disabled={isRunning}
+          onRetry={() => {
+            if (!selectedJob || !instanceUrl.trim() || !accessToken.trim()) return
+            if (window.confirm(`Retry ${errors.length} failed record(s) for "${selectedJob.name}"?`)) {
+              retryErrors(selectedJob.id, instanceUrl.trim(), accessToken.trim(), threads, params)
+            }
+          }}
+          onClear={() => {
+            if (selectedJob && instanceUrl.trim()) clearErrors(selectedJob.id, instanceUrl.trim())
+          }}
+          onRefresh={() => {
+            if (selectedJob && instanceUrl.trim()) fetchErrors(selectedJob.id, instanceUrl.trim())
+          }}
+        />
+
         <EventLog events={state.events} />
 
       </main>

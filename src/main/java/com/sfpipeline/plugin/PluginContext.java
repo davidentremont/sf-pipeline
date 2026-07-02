@@ -1,6 +1,7 @@
 package com.sfpipeline.plugin;
 
 import com.sfpipeline.model.Job;
+import com.sfpipeline.service.ErrorService;
 import com.sfpipeline.service.SalesforceService;
 import java.util.List;
 import java.util.Map;
@@ -14,15 +15,20 @@ public class PluginContext {
     private final Job job;
     private final SalesforceService salesforceService;
     private final Consumer<String> logger;
+    private final ErrorService errorService;
+    private final String pluginName;
 
     public PluginContext(int workerId, String instanceUrl, String accessToken,
-                         Job job, SalesforceService salesforceService, Consumer<String> logger) {
+                         Job job, SalesforceService salesforceService, Consumer<String> logger,
+                         ErrorService errorService, String pluginName) {
         this.workerId = workerId;
         this.instanceUrl = instanceUrl;
         this.accessToken = accessToken;
         this.job = job;
         this.salesforceService = salesforceService;
         this.logger = logger;
+        this.errorService = errorService;
+        this.pluginName = pluginName;
     }
 
     public int getWorkerId() { return workerId; }
@@ -45,5 +51,11 @@ public class PluginContext {
 
     public void log(String message) {
         logger.accept("[Worker " + workerId + "] " + message);
+    }
+
+    public void recordError(String recordId, String message) {
+        if (errorService != null) {
+            errorService.recordError(job.getId(), instanceUrl, recordId, pluginName, message);
+        }
     }
 }
