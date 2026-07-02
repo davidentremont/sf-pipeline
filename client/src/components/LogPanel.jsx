@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useReducer } from 'react'
 
 const LEVEL_STYLE = {
   info:    'text-gray-700',
@@ -19,6 +19,12 @@ const WORKER_DOT = {
 function formatEta(seconds) {
   if (seconds < 60) return `${Math.round(seconds)}s`
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`
+}
+
+function formatElapsed(seconds) {
+  if (seconds < 60) return `${Math.floor(seconds)}s`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.floor(seconds % 60)}s`
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`
 }
 
@@ -59,12 +65,20 @@ export default function LogPanel({
     }
   }, [events.length, tab])
 
+  const [, tick] = useReducer(n => n + 1, 0)
+  useEffect(() => {
+    if (!isRunning) return
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [isRunning])
+
   const { processed = 0, batch = 0, totalCount = 0, sessionStart, sessionBaseProcessed = 0 } = progress
   const pct = totalCount > 0 ? Math.min(100, (processed / totalCount) * 100) : null
   const elapsedSec = sessionStart ? (Date.now() - sessionStart) / 1000 : 0
   const processedThisRun = processed - sessionBaseProcessed
   const rate = elapsedSec > 15 && processedThisRun > 0 ? processedThisRun / elapsedSec : null
   const etaSeconds = rate && totalCount > 0 && processed < totalCount ? (totalCount - processed) / rate : null
+  const recsPerMin = rate != null ? Math.round(rate * 60) : null
 
   const errorBadge = errors.length > 0 && (
     <span className="ml-1.5 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full leading-none">
@@ -145,17 +159,18 @@ export default function LogPanel({
                 <span>
                   {processed.toLocaleString()} processed
                   {batch > 0 && <span className="ml-2 text-gray-400">· Batch {batch}</span>}
-                  {rate != null && (
-                    <span className="ml-2 text-gray-400">
-                      · ~{rate < 10 ? rate.toFixed(1) : Math.round(rate)} rec/s
-                    </span>
+                  {recsPerMin != null && (
+                    <span className="ml-2 text-gray-400">· {recsPerMin.toLocaleString()} rec/min</span>
                   )}
                 </span>
-                <span>
+                <span className="flex items-center gap-2">
+                  {sessionStart && (
+                    <span className="text-gray-400">⏱ {formatElapsed(elapsedSec)}</span>
+                  )}
                   {pct != null && (
                     etaSeconds != null
-                      ? `ETA ${formatEta(etaSeconds)}`
-                      : `${(totalCount - processed).toLocaleString()} remaining`
+                      ? <span>ETA {formatEta(etaSeconds)}</span>
+                      : <span>{(totalCount - processed).toLocaleString()} remaining</span>
                   )}
                 </span>
               </div>
