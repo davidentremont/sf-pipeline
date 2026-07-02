@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+cd client && npm install && npm run build && cd ..
+
 mvn package -DskipTests
 
 rm -rf dist

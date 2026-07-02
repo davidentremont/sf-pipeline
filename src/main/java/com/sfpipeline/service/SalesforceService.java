@@ -102,6 +102,27 @@ public class SalesforceService {
         return 0;
     }
 
+    public Map<String, String> verifyConnection(String instanceUrl, String accessToken) throws Exception {
+        HttpURLConnection conn = openConnection(instanceUrl + "/services/oauth2/userinfo", "GET", accessToken);
+        conn.setConnectTimeout(10000);
+        conn.setReadTimeout(10000);
+
+        int code = conn.getResponseCode();
+        String body = readAll(code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream());
+        conn.disconnect();
+
+        if (code < 200 || code >= 300) {
+            throw new RuntimeException("HTTP " + code + ": " + body);
+        }
+
+        JsonNode root = objectMapper.readTree(body);
+        Map<String, String> info = new HashMap<>();
+        info.put("username", root.path("preferred_username").asText(root.path("email").asText("")));
+        info.put("displayName", root.path("name").asText(""));
+        info.put("orgId", root.path("organization_id").asText(""));
+        return info;
+    }
+
     public HttpURLConnection openConnection(String urlStr, String method, String accessToken) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) URI.create(urlStr).toURL().openConnection();
         conn.setRequestMethod(method);

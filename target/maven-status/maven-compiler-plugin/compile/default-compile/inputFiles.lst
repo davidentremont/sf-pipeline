@@ -8,6 +8,7 @@
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/model/PipelineProgress.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/model/PluginError.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/model/RuntimeParam.java
+/Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/model/SfOrg.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/pipeline/PipelineEngine.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/pipeline/QueryEngine.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/plugin/Plugin.java
@@ -21,5 +22,6 @@
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/service/JobService.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/service/ProgressService.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/service/SalesforceService.java
+/Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/service/SfCliService.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/service/SfdxService.java
 /Users/dentremont/Projects/sf-pipeline/src/main/java/com/sfpipeline/ws/PipelineWebSocketHandler.java

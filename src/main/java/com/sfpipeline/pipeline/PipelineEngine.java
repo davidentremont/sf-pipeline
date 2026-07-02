@@ -255,13 +255,22 @@ public class PipelineEngine {
                     .with("workerId", workerId)
                     .with("plugin", plugin.getName()));
 
+            final String pluginName = plugin.getName();
             PluginContext ctx = new PluginContext(
                     workerId, config.getInstanceUrl(), config.getAccessToken(),
                     config.getJob(), salesforceService,
                     msg -> emit(new PipelineEvent("WORKER_LOG")
                             .with("workerId", workerId)
                             .with("message", msg)),
-                    errorService, plugin.getName());
+                    (recordId, message) -> {
+                        errorService.recordError(config.getJob().getId(), config.getInstanceUrl(),
+                                recordId, pluginName, message);
+                        emit(new PipelineEvent("RECORD_ERROR")
+                                .with("workerId", workerId)
+                                .with("recordId", recordId)
+                                .with("pluginName", pluginName)
+                                .with("errorMessage", message));
+                    });
             try {
                 data = plugin.execute(data, ctx);
             } catch (Exception e) {

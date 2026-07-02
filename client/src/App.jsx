@@ -3,6 +3,7 @@ import { usePipeline } from './hooks/usePipeline.js'
 import { useJobs } from './hooks/useJobs.js'
 import { useProgress } from './hooks/useProgress.js'
 import { useErrors } from './hooks/useErrors.js'
+import { useOrgConnection } from './hooks/useOrgConnection.js'
 import WorkerMonitor from './components/WorkerMonitor.jsx'
 import EventLog from './components/EventLog.jsx'
 import ConnectionPanel from './components/ConnectionPanel.jsx'
@@ -12,7 +13,27 @@ function StatusDot({ connected }) {
   return (
     <span className="flex items-center gap-1.5 text-xs">
       <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`} />
-      {connected ? 'Connected' : 'Disconnected'}
+      {connected ? 'Server' : 'Disconnected'}
+    </span>
+  )
+}
+
+function OrgDot({ orgStatus }) {
+  if (orgStatus.status === 'idle') return null
+  const dot = {
+    verifying: 'bg-yellow-400 animate-pulse',
+    verified:  'bg-green-400',
+    error:     'bg-red-400',
+  }[orgStatus.status]
+  const label = orgStatus.status === 'verified'
+    ? (orgStatus.username || 'Org verified')
+    : orgStatus.status === 'verifying'
+    ? 'Verifying…'
+    : 'Auth error'
+  return (
+    <span className="flex items-center gap-1.5 text-xs">
+      <span className={`w-2 h-2 rounded-full ${dot}`} />
+      {label}
     </span>
   )
 }
@@ -109,9 +130,13 @@ export default function App() {
   const { jobs, selectedJob, selectJob, loading: jobsLoading, reload: reloadJobs } = useJobs()
   const { progress: allProgress, refresh: refreshProgress } = useProgress()
   const { errors, loading: errorsLoading, fetchErrors, clearErrors } = useErrors()
+  const { orgs, cliAvailable, orgsLoading, fetchOrgs, loadOrgToken, orgStatus, verify, clearOrgStatus } = useOrgConnection()
 
   const [instanceUrl, setInstanceUrl]   = useState(() => localStorage.getItem('sf_instanceUrl') || '')
   const [accessToken, setAccessToken]   = useState(() => localStorage.getItem('sf_accessToken') || '')
+
+  function handleSetInstanceUrl(v) { setInstanceUrl(v); clearOrgStatus() }
+  function handleSetAccessToken(v) { setAccessToken(v); clearOrgStatus() }
   const [batchSize, setBatchSize]       = useState(1000)
   const [threads, setThreads]           = useState(5)
   const [params, setParams]             = useState({})
@@ -179,6 +204,7 @@ export default function App() {
         <span className="text-xl font-bold tracking-tight">SF Async Data Pipeline</span>
         <div className="flex items-center gap-4">
           <span className={`text-sm capitalize ${statusColor[state.status]}`}>{state.status}</span>
+          <OrgDot orgStatus={orgStatus} />
           <StatusDot connected={state.connected} />
         </div>
       </header>
@@ -263,10 +289,17 @@ export default function App() {
         {/* Connection details */}
         <ConnectionPanel
           instanceUrl={instanceUrl}
-          setInstanceUrl={setInstanceUrl}
+          setInstanceUrl={handleSetInstanceUrl}
           accessToken={accessToken}
-          setAccessToken={setAccessToken}
+          setAccessToken={handleSetAccessToken}
           isRunning={isRunning}
+          orgs={orgs}
+          cliAvailable={cliAvailable}
+          orgsLoading={orgsLoading}
+          onReloadOrgs={fetchOrgs}
+          onLoadOrgToken={loadOrgToken}
+          orgStatus={orgStatus}
+          onVerify={verify}
         />
 
         {/* Pipeline config + controls */}
@@ -377,7 +410,7 @@ export default function App() {
         <WorkerMonitor workers={state.workers} progress={state.progress} />
 
         <ErrorPanel
-          errors={errors}
+          errors={isRunning ? state.recordErrors : errors}
           loading={errorsLoading}
           disabled={isRunning}
           onRetry={() => {

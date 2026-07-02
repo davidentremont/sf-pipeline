@@ -8,6 +8,7 @@ const INITIAL = {
   workers: [],
   progress: { processed: 0, batch: 0, totalCount: 0, sessionStart: null, sessionBaseProcessed: 0 },
   events: [],
+  recordErrors: [],
   error: null,
   currentQuery: null,
 }
@@ -30,6 +31,7 @@ function reducer(state, action) {
         ...addEvent(`Pipeline started — job: ${action.job}, instance: ${action.instanceUrl}, batch: ${action.batchSize}, threads: ${action.threads}`),
         status: 'running',
         workers: [],
+        recordErrors: [],
         progress: {
           processed: 0, batch: 0, totalCount: 0,
           sessionStart: action._ts,
@@ -73,6 +75,17 @@ function reducer(state, action) {
       }
     case 'WORKER_LOG':
       return addEvent(`[W${action.workerId}] ${action.message}`)
+    case 'RECORD_ERROR':
+      return {
+        ...addEvent(`[W${action.workerId}] Record error — ${action.recordId} (${action.pluginName}): ${action.errorMessage}`, 'error'),
+        recordErrors: [...state.recordErrors, {
+          id: Date.now() + Math.random(),
+          recordId: action.recordId,
+          pluginName: action.pluginName,
+          errorMessage: action.errorMessage,
+          occurredAt: new Date().toISOString(),
+        }],
+      }
     case 'WORKER_DONE':
       return {
         ...state,
