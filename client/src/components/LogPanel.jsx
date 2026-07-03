@@ -157,7 +157,10 @@ export default function LogPanel({
               </div>
               <div className="flex justify-between text-xs text-gray-500">
                 <span>
-                  {processed.toLocaleString()} processed
+                  {totalCount > 0
+                    ? <>{processed.toLocaleString()} / {totalCount.toLocaleString()} <span className="text-gray-400">({pct.toFixed(1)}%)</span></>
+                    : <>{processed.toLocaleString()} processed</>
+                  }
                   {batch > 0 && <span className="ml-2 text-gray-400">· Batch {batch}</span>}
                   {recsPerMin != null && (
                     <span className="ml-2 text-gray-400">· {recsPerMin.toLocaleString()} rec/min</span>
